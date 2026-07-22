@@ -30,6 +30,7 @@ classifiers = [
 ]
 dependencies = [
     "requests>=2.31,<3",
+    "tzdata>=2025.2; platform_system == 'Windows'",
     "urllib3>=2,<3",
 ]
 
@@ -71,6 +72,7 @@ pythonpath = ["."]
 addopts = "--strict-markers"
 markers = [
     "integration: calls the live ticket.rzd.ru API and is opt-in",
+    "mcp: exercises the optional MCP server stack",
 ]
 
 [tool.coverage.run]

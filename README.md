@@ -4,8 +4,8 @@
 [`ticket.rzd.ru`](https://ticket.rzd.ru). Проект не связан с ОАО «РЖД»; внутренние
 endpoint и схема ответов могут изменяться без предупреждения.
 
-Поведение TLS намеренно сохранено от версии 1.x: проверка сертификата API РЖД
-отключена. Не передавайте клиенту собственные секреты или учётные данные.
+TLS certificate verification is enabled by default. Set `RZD_CA_BUNDLE` only when a
+custom CA bundle is required; the client never falls back to `verify=False`.
 
 ## Возможности
 
@@ -59,6 +59,50 @@ with RzdClient() as client:
 ```
 
 Все модели поддерживают `to_dict()` и содержат необработанный узел ответа в `raw`.
+
+### Library-only usage without MCP
+
+The base package is intended to work without MCP dependencies:
+
+```sh
+python -m pip install -e .
+```
+
+```python
+from datetime import date, timedelta
+
+import requests
+
+from rzd_api import Config, RzdClient, RzdTransportError
+
+config = Config(connect_timeout=5, read_timeout=20)
+departure = date.today() + timedelta(days=14)
+
+try:
+    with RzdClient(config) as client:
+        routes = client.search_tickets(
+            "2000000",
+            "2004000",
+            departure,
+            only_with_seats=False,
+        )
+except RzdTransportError as exc:
+    if isinstance(exc.__cause__, requests.exceptions.SSLError):
+        raise RuntimeError("RZD TLS certificate verification failed.") from exc
+    raise
+
+for route in routes:
+    print(route.number, route.departure_time, route.min_price)
+```
+
+To use a custom CA bundle:
+
+```sh
+export RZD_CA_BUNDLE=/etc/ssl/certs/custom-rzd-ca.pem
+```
+
+Live requests call the external RZD service. MCP is not required for direct
+library usage.
 
 ### Методы `RzdClient`
 

@@ -3,11 +3,14 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import anyio
-import httpx
 import pytest
 
+anyio = pytest.importorskip("anyio")
+httpx = pytest.importorskip("httpx")
+
 from mcp_server import server
+
+pytestmark = pytest.mark.mcp
 
 
 async def ok_app(

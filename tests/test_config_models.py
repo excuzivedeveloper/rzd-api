@@ -35,6 +35,8 @@ from rzd_api import (
         {"station_cache_ttl": "forever"},
         {"station_cache_size": True},
         {"proxy": 1},
+        {"ca_bundle": 1},
+        {"ca_bundle": "missing-ca.pem"},
     ],
 )
 def test_config_validation(kwargs: dict[str, object]) -> None:

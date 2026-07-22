@@ -3,9 +3,16 @@ from __future__ import annotations
 import os
 import sys
 
-import anyio
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+import pytest
+
+anyio = pytest.importorskip("anyio")
+mcp = pytest.importorskip("mcp")
+stdio = pytest.importorskip("mcp.client.stdio")
+ClientSession = mcp.ClientSession
+StdioServerParameters = mcp.StdioServerParameters
+stdio_client = stdio.stdio_client
+
+pytestmark = pytest.mark.mcp
 
 
 def test_stdio_protocol_initialize_list_and_call() -> None:

@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import os
 
-import anyio
-import httpx
 import pytest
-from mcp import ClientSession
-from mcp.client.streamable_http import streamable_http_client
+
+anyio = pytest.importorskip("anyio")
+httpx = pytest.importorskip("httpx")
+mcp = pytest.importorskip("mcp")
+streamable_http = pytest.importorskip("mcp.client.streamable_http")
+ClientSession = mcp.ClientSession
+streamable_http_client = streamable_http.streamable_http_client
 
 pytestmark = [
     pytest.mark.integration,
