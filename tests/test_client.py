@@ -21,6 +21,8 @@ from rzd_api import (
     Station,
     TrainAvailabilityResult,
     TrainRoute,
+    TransferProvider,
+    TransferSearchResult,
 )
 
 
@@ -94,6 +96,10 @@ class FakeApi:
     def get_route_stations(self, **kwargs: Any) -> RouteStationsResult:
         self.calls.append(("get_route_stations", kwargs))
         return RouteStationsResult(train_number="001A", raw={})
+
+    def search_transfers(self, request: Any) -> TransferSearchResult:
+        self.calls.append(("search_transfers", {"request": request}))
+        return TransferSearchResult(raw={})
 
     def close(self) -> None:
         self.closed = True
@@ -192,6 +198,34 @@ def test_invalid_past_and_return_dates(client: RzdClient, api: FakeApi) -> None:
 def test_search_rejects_same_station(client: RzdClient) -> None:
     with pytest.raises(RzdValidationError, match="different"):
         client.search_tickets("1", "1", future_date())
+
+
+def test_search_transfers_validates_and_calls_transfer_endpoint(
+    client: RzdClient, api: FakeApi
+) -> None:
+    result = client.search_transfers(
+        "from-node",
+        "to-node",
+        future_date(),
+        providers=(TransferProvider.RAILS, TransferProvider.SUBURBAN),
+    )
+    assert isinstance(result, TransferSearchResult)
+    call = api.calls[-1]
+    assert call[0] == "search_transfers"
+    request = call[1]["request"]
+    assert request.origin == "from-node"
+    assert request.destination == "to-node"
+    assert request.min_trips == 1
+    assert request.max_trips == 3
+    assert request.max_results == 3
+    assert request.provider_values() == ["b2brails", "cbdpr"]
+
+    with pytest.raises(RzdValidationError, match="empty"):
+        client.search_transfers("", "to-node", future_date())
+    with pytest.raises(RzdValidationError, match="different"):
+        client.search_transfers("same", "same", future_date())
+    with pytest.raises(RzdValidationError, match="max_results"):
+        client.search_transfers("from-node", "to-node", future_date(), max_results=0)
 
 
 def test_station_cache_and_resolution(client: RzdClient, api: FakeApi) -> None:

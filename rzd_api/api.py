@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from datetime import date, datetime
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -22,6 +23,15 @@ from .models import (
     TrainAvailability,
     TrainAvailabilityResult,
     TrainRoute,
+    TransferInterstation,
+    TransferLeg,
+    TransferPlace,
+    TransferProduct,
+    TransferProvider,
+    TransferRoute,
+    TransferSearchRequest,
+    TransferSearchResult,
+    TransferTrip,
 )
 from .query import JsonPayload, RzdTransport
 
@@ -35,6 +45,7 @@ class RzdApi:
         parsed_base_url = urlsplit(self.base_url)
         site_url = urlunsplit((parsed_base_url.scheme, parsed_base_url.netloc, "", "", ""))
         self.b2b_base_url = (config.b2b_base_url or f"{site_url}/apib2b/p").rstrip("/")
+        self.mmp_base_url = self._derive_mmp_base_url(config.b2b_base_url, site_url)
         self.transport = transport or RzdTransport(config)
 
     def get_train_routes(
@@ -173,10 +184,21 @@ class RzdApi:
                 "The station suggestion response contains unsupported station nodes."
             )
         stations = list(self._parse_station_nodes(nodes))
-        unique: dict[tuple[str, str], Station] = {}
+        unique: dict[
+            tuple[str, str, str | None, str | None, tuple[tuple[str, str], ...]], Station
+        ] = {}
         for station in stations:
-            unique[(station.name, station.code)] = station
+            unique[self._station_identity_key(station)] = station
         return list(unique.values())
+
+    def search_transfers(self, request: TransferSearchRequest) -> TransferSearchResult:
+        payload = self.transport.request_json(
+            "POST",
+            f"{self.mmp_base_url}/onewayRoutesStream/v2",
+            json_body=self._transfer_request_body(request),
+            headers={"Cookie": f"LANG_SITE={self.config.language}"},
+        )
+        return self._parse_transfer_result(payload)
 
     def get_carriages(
         self,
@@ -494,6 +516,172 @@ class RzdApi:
         )
 
     @classmethod
+    def _parse_transfer_result(cls, payload: JsonPayload) -> TransferSearchResult:
+        root = cls._object_payload(payload, "transfer search")
+        route_nodes = root.get("multi_modal_routes", [])
+        if not isinstance(route_nodes, list) or not all(
+            isinstance(node, dict) for node in route_nodes
+        ):
+            raise RzdSchemaError("The transfer-search response has no supported routes list.")
+        return TransferSearchResult(
+            routes=[cls._parse_transfer_route(node) for node in route_nodes],
+            request_id=cls._string(root, "request_id"),
+            raw=root,
+        )
+
+    @classmethod
+    def _parse_transfer_route(cls, node: JsonObject) -> TransferRoute:
+        legs = [
+            cls._parse_transfer_leg(item)
+            for item in cls._optional_object_list(node, "routes", "transfer route")
+        ]
+        transfers = [
+            cls._parse_interstation_transfer(item)
+            for item in cls._optional_object_list(node, "transfers", "transfer route")
+        ]
+        first_trip = next((leg.trips[0] for leg in legs if leg.trips), None)
+        last_trip = next((leg.trips[-1] for leg in reversed(legs) if leg.trips), None)
+        incomplete = cls._boolean_or_none(node, "incomplete")
+        has_incomplete_leg = any(leg.incomplete is True for leg in legs)
+        return TransferRoute(
+            legs=legs,
+            transfers=transfers,
+            origin=first_trip.origin if first_trip else (legs[0].origin if legs else None),
+            destination=(
+                last_trip.destination if last_trip else (legs[-1].destination if legs else None)
+            ),
+            departure_time=first_trip.departure_time if first_trip else None,
+            arrival_time=last_trip.arrival_time if last_trip else None,
+            price=cls._money(node, "min_price"),
+            currency=cls._currency(node, "min_price"),
+            max_price=cls._money(node, "max_price"),
+            available_places=cls._integer(node, "free_places"),
+            incomplete=True if has_incomplete_leg else incomplete,
+            ttl_min_expire_time=cls._string(node, "ttl_min_expire_time")
+            or cls._first_string([leg.ttl_min_expire_time for leg in legs]),
+            ttl_max_expire_time=cls._string(node, "ttl_max_expire_time")
+            or cls._first_string([leg.ttl_max_expire_time for leg in legs]),
+            raw=node,
+        )
+
+    @classmethod
+    def _parse_transfer_leg(cls, node: JsonObject) -> TransferLeg:
+        trips: list[TransferTrip] = []
+        for segment in cls._optional_object_list(node, "segments", "transfer leg"):
+            trips.extend(
+                cls._parse_transfer_trip(item)
+                for item in cls._optional_object_list(segment, "trips", "transfer segment")
+            )
+        first_trip = trips[0] if trips else None
+        last_trip = trips[-1] if trips else None
+        return TransferLeg(
+            provider_type=cls._string(cls._nested(node, "provider"), "key"),
+            booking_system=cls._string(node, "booking_system"),
+            origin=(
+                first_trip.origin if first_trip else cls._parse_place(node.get("start_location"))
+            ),
+            destination=(
+                last_trip.destination
+                if last_trip
+                else cls._parse_place(node.get("finish_location"))
+            ),
+            departure_time=(
+                first_trip.departure_time
+                if first_trip
+                else cls._string(node, "start_datetime")
+            ),
+            arrival_time=(
+                last_trip.arrival_time if last_trip else cls._string(node, "finish_datetime")
+            ),
+            price=cls._money(node, "min_price"),
+            currency=cls._currency(node, "min_price"),
+            max_price=cls._money(node, "max_price"),
+            available_places=cls._integer(node, "free_places"),
+            transport_types=cls._provider_codes(node, "transport_types"),
+            trips=trips,
+            incomplete=cls._boolean_or_none(node, "incomplete"),
+            ttl_min_expire_time=cls._string(node, "ttl_min_expire_time"),
+            ttl_max_expire_time=cls._string(node, "ttl_max_expire_time"),
+            raw=node,
+        )
+
+    @classmethod
+    def _parse_transfer_trip(cls, node: JsonObject) -> TransferTrip:
+        raw_data = node.get("raw_data")
+        train_pricing: list[TrainRoute] = []
+        if isinstance(raw_data, dict):
+            pricing = raw_data.get("/Railway/V1/Search/TrainPricing")
+            if isinstance(pricing, dict):
+                train_nodes = pricing.get("Trains")
+                if isinstance(train_nodes, list) and all(
+                    isinstance(item, dict) for item in train_nodes
+                ):
+                    train_pricing = [cls._parse_train(item) for item in train_nodes]
+        meters = cls._integer(cls._nested(node, "trip_distance"), "meters")
+        return TransferTrip(
+            provider_type=cls._string(cls._nested(node, "provider"), "key"),
+            number=cls._string(node, "race_number", "train_number", "number"),
+            origin=cls._parse_place(node.get("start_location")),
+            destination=cls._parse_place(node.get("finish_location")),
+            departure_time=cls._string(node, "start_datetime"),
+            arrival_time=cls._string(node, "finish_datetime"),
+            price=cls._money(node, "min_price"),
+            currency=cls._currency(node, "min_price"),
+            max_price=cls._money(node, "max_price"),
+            available_places=cls._integer(node, "free_places"),
+            distance_km=meters // 1000 if meters is not None else None,
+            transport_type=cls._string(cls._nested(node, "transport_type"), "provider_code"),
+            products=[
+                cls._parse_transfer_product(item)
+                for item in cls._optional_object_list(node, "products", "transfer trip")
+            ],
+            train_pricing=train_pricing,
+            raw=node,
+        )
+
+    @classmethod
+    def _parse_transfer_product(cls, node: JsonObject) -> TransferProduct:
+        return TransferProduct(
+            price=cls._money(node, "price"),
+            currency=cls._currency(node, "price"),
+            free_places=cls._integer(node, "free_places"),
+            product_type=cls._string(cls._nested(node, "train_car_type"), "key"),
+            service_classes=cls._provider_codes(node, "common_service_classes"),
+            carriers=cls._provider_codes(node, "carriers"),
+            ttl_rule_key=cls._string(node, "ttl_rule_key"),
+            ttl_expire_time=cls._string(node, "ttl_expire_time"),
+            raw=node,
+        )
+
+    @classmethod
+    def _parse_interstation_transfer(cls, node: JsonObject) -> TransferInterstation:
+        seconds = cls._duration_seconds(node, "min_duration")
+        return TransferInterstation(
+            origin=cls._parse_place(node.get("start_location")),
+            destination=cls._parse_place(node.get("finish_location")),
+            price=cls._money(node, "min_price"),
+            currency=cls._currency(node, "min_price"),
+            duration_minutes=seconds // 60 if seconds is not None else None,
+            duration_seconds=seconds,
+            raw=node,
+        )
+
+    @classmethod
+    def _parse_place(cls, value: Any) -> TransferPlace | None:
+        if not isinstance(value, dict):
+            return None
+        station = cls._nested(value, "station")
+        city = cls._nested(value, "parent_city")
+        return TransferPlace(
+            key=cls._string(station, "key"),
+            name=cls._string(station, "name_ru"),
+            name_en=cls._string(station, "name_en"),
+            city_name=cls._string(city, "name_ru"),
+            city_key=cls._string(city, "key"),
+            raw=value,
+        )
+
+    @classmethod
     def _suggestion_nodes(cls, payload: JsonPayload) -> list[Any]:
         if isinstance(payload, list):
             return payload
@@ -529,9 +717,13 @@ class RzdApi:
                     code=code,
                     raw=node,
                     node_id=cls._string(node, "nodeId", "NodeId", "id", "Id"),
+                    city_id=cls._string(node, "cityId", "CityId"),
+                    timezone=cls._string(node, "timezone", "Timezone"),
+                    codes=cls._codes(node),
                     node_type=cls._string(node, "nodeType", "NodeType"),
                     transport_type=cls._string(node, "transportType", "TransportType"),
                     region=cls._string(node, "region", "Region"),
+                    country=cls._string(node, "country", "Country"),
                 )
                 continue
             for key in ("stations", "items", "children", "Children"):
@@ -583,6 +775,31 @@ class RzdApi:
         return value
 
     @staticmethod
+    def _optional_object_list(root: JsonObject, key: str, endpoint: str) -> list[JsonObject]:
+        value = root.get(key, [])
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise RzdSchemaError(f"The {endpoint} response contains an invalid {key} list.")
+        if not all(isinstance(node, dict) for node in value):
+            raise RzdSchemaError(f"Every {endpoint} {key} item must be an object.")
+        return value
+
+    @staticmethod
+    def _derive_mmp_base_url(configured_b2b_base_url: str | None, site_url: str) -> str:
+        if configured_b2b_base_url is None:
+            return f"{site_url}/apib2b/mmp"
+
+        parsed = urlsplit(configured_b2b_base_url.rstrip("/"))
+        segments = [segment for segment in parsed.path.split("/") if segment]
+        if segments and segments[-1] == "p":
+            segments[-1] = "mmp"
+        else:
+            segments.append("mmp")
+        path = "/" + "/".join(segments) if segments else "/mmp"
+        return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+
+    @staticmethod
     def _object_payload(payload: JsonPayload, endpoint: str) -> JsonObject:
         if not isinstance(payload, dict):
             raise RzdSchemaError(f"The {endpoint} response must be an object.")
@@ -594,6 +811,49 @@ class RzdApi:
         if value is None:
             raise RzdSchemaError(f"The {endpoint} response has no {key} field.")
         return value
+
+    @staticmethod
+    def _station_identity_key(
+        station: Station,
+    ) -> tuple[str, str, str | None, str | None, tuple[tuple[str, str], ...]]:
+        relevant_codes = {
+            key: value
+            for key, value in station.codes.items()
+            if key in {"Railway", "Cbdpr"} and value not in (None, "")
+        }
+        code_items = tuple(sorted((key, str(value)) for key, value in relevant_codes.items()))
+        return (station.name, station.code, station.node_id, station.city_id, code_items)
+
+    @classmethod
+    def _transfer_request_body(cls, request: TransferSearchRequest) -> JsonObject:
+        departure = cls._date_only(request.departure_date)
+        providers = request.provider_values()
+        for provider in providers:
+            if provider not in {TransferProvider.RAILS.value, TransferProvider.SUBURBAN.value}:
+                raise RzdSchemaError("Transfer provider must be one of: b2brails, cbdpr.")
+        return {
+            "max_results": request.max_results,
+            "min_trips_in_leg": request.min_trips,
+            "max_trips_in_leg": request.max_trips,
+            "system_params": {
+                "search_via_ar": "SVA_DONT_SEARCH",
+                "search_via_graph": "SVG_SEARCH_WITH_DETAIL",
+                "detailed_location": True,
+                "debug": False,
+            },
+            "start_location": {"city": {"key": request.origin}, "type": "city"},
+            "finish_location": {"city": {"key": request.destination}, "type": "city"},
+            "start_datetime_range": {
+                "from": f"{departure}T00:00:00",
+                "to": f"{departure}T23:59:59",
+            },
+            "filters": [
+                {
+                    "param_name": "route.provider.key",
+                    "exact_filter": {"param_values": providers},
+                }
+            ],
+        }
 
     @staticmethod
     def _car_metadata_params(
@@ -664,6 +924,96 @@ class RzdApi:
             if value not in (None, ""):
                 return str(value)
         return None
+
+    @staticmethod
+    def _nested(node: JsonObject, key: str) -> JsonObject:
+        value = node.get(key)
+        return value if isinstance(value, dict) else {}
+
+    @classmethod
+    def _codes(cls, node: JsonObject) -> JsonObject:
+        value = node.get("Codes") if "Codes" in node else node.get("codes", {})
+        if not isinstance(value, dict):
+            return {}
+        return dict(value)
+
+    @classmethod
+    def _provider_codes(cls, node: JsonObject, key: str) -> list[str]:
+        values = node.get(key, [])
+        if values is None:
+            return []
+        if not isinstance(values, list):
+            raise RzdSchemaError(f"Field {key} must be a list.")
+        result: list[str] = []
+        for item in values:
+            if isinstance(item, dict):
+                code = cls._string(item, "provider_code", "key")
+                if code is not None:
+                    result.append(code)
+            elif isinstance(item, str):
+                result.append(item)
+            else:
+                raise RzdSchemaError(f"Field {key} contains an invalid item.")
+        return result
+
+    @classmethod
+    def _money(cls, node: JsonObject, key: str) -> float | None:
+        value = node.get(key)
+        if isinstance(value, dict):
+            kopecks = cls._number(value, "kopecks")
+            if kopecks is not None:
+                return kopecks / 100
+            return cls._number(value, "amount", "value")
+        return cls._number(node, key)
+
+    @staticmethod
+    def _currency(node: JsonObject, key: str) -> str | None:
+        value = node.get(key)
+        if isinstance(value, dict):
+            currency = value.get("currency") or value.get("currency_code")
+            return str(currency) if currency not in (None, "") else "RUB"
+        return None
+
+    @classmethod
+    def _duration_seconds(cls, node: JsonObject, key: str) -> int | None:
+        value = cls._string(node, key)
+        if value is None:
+            return None
+        raw = value[:-1] if value.endswith("s") else value
+        try:
+            return int(float(raw))
+        except ValueError:
+            raise RzdSchemaError(f"Field {key} must be a duration in seconds.") from None
+
+    @staticmethod
+    def _boolean_or_none(node: JsonObject, key: str) -> bool | None:
+        if key not in node or node[key] is None:
+            return None
+        value = node[key]
+        if not isinstance(value, bool):
+            raise RzdSchemaError(f"Field {key} must be a boolean.")
+        return value
+
+    @staticmethod
+    def _date_only(value: date | datetime | str) -> str:
+        if isinstance(value, datetime):
+            return value.date().isoformat()
+        if isinstance(value, date):
+            return value.isoformat()
+        raw = str(value).strip()
+        if "T" in raw:
+            raw = raw.split("T", 1)[0]
+        if "." in raw:
+            return datetime.strptime(raw, "%d.%m.%Y").date().isoformat()
+        return datetime.fromisoformat(raw).date().isoformat()
+
+    @staticmethod
+    def _first_number(values: list[float | None]) -> float | None:
+        return next((value for value in values if value is not None), None)
+
+    @staticmethod
+    def _first_string(values: list[str | None]) -> str | None:
+        return next((value for value in values if value is not None), None)
 
     @classmethod
     def _number(cls, node: JsonObject, *keys: str) -> float | None:

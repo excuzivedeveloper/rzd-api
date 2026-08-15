@@ -64,6 +64,7 @@ class RzdTransport:
         *,
         params: dict[str, Any] | None = None,
         json_body: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> JsonPayload:
         if self._closed:
             raise RzdTransportError("The RZD client is closed.")
@@ -80,6 +81,7 @@ class RzdTransport:
                 url=url,
                 params=params,
                 json=json_body,
+                headers=headers,
                 timeout=(self.config.connect_timeout, self.config.read_timeout),
             )
         except requests.RequestException as exc:

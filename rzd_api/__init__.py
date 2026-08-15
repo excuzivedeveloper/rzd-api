@@ -26,6 +26,15 @@ from .models import (
     TrainAvailability,
     TrainAvailabilityResult,
     TrainRoute,
+    TransferInterstation,
+    TransferLeg,
+    TransferPlace,
+    TransferProduct,
+    TransferProvider,
+    TransferRoute,
+    TransferSearchRequest,
+    TransferSearchResult,
+    TransferTrip,
 )
 
 __all__ = [
@@ -54,4 +63,13 @@ __all__ = [
     "TrainAvailability",
     "TrainAvailabilityResult",
     "TrainRoute",
+    "TransferInterstation",
+    "TransferLeg",
+    "TransferPlace",
+    "TransferProduct",
+    "TransferProvider",
+    "TransferRoute",
+    "TransferSearchRequest",
+    "TransferSearchResult",
+    "TransferTrip",
 ]

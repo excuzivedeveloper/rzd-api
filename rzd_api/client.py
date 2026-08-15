@@ -24,6 +24,9 @@ from .models import (
     Station,
     TrainAvailabilityResult,
     TrainRoute,
+    TransferProvider,
+    TransferSearchRequest,
+    TransferSearchResult,
 )
 
 MOSCOW_TIMEZONE = ZoneInfo("Europe/Moscow")
@@ -143,6 +146,43 @@ class RzdClient:
             while len(self._station_cache) > self.config.station_cache_size:
                 self._station_cache.popitem(last=False)
         return stations
+
+    def search_transfers(
+        self,
+        from_node: str,
+        to_node: str,
+        departure_date: str | date | datetime,
+        *,
+        min_trips: int = 1,
+        max_trips: int = 3,
+        max_results: int = 3,
+        providers: tuple[TransferProvider | str, ...] = (
+            TransferProvider.RAILS,
+            TransferProvider.SUBURBAN,
+        ),
+    ) -> TransferSearchResult:
+        """Search railway routes that may include transfer chains by station/city NodeId."""
+        self._ensure_open()
+        departure = self._parse_datetime(departure_date, "departure_date")
+        origin = str(from_node).strip()
+        destination = str(to_node).strip()
+        if not origin or not destination:
+            raise RzdValidationError("from_node and to_node must not be empty.")
+        if origin == destination:
+            raise RzdValidationError("Origin and destination nodes must be different.")
+        try:
+            request = TransferSearchRequest(
+                origin=origin,
+                destination=destination,
+                departure_date=departure.date(),
+                min_trips=min_trips,
+                max_trips=max_trips,
+                max_results=max_results,
+                providers=providers,
+            )
+        except ValueError as exc:
+            raise RzdValidationError(str(exc)) from exc
+        return self._api.search_transfers(request)
 
     def get_train_availability(
         self,
