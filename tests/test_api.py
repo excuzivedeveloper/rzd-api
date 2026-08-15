@@ -31,6 +31,11 @@ def make_api(*payloads: Any) -> tuple[RzdApi, FakeTransport]:
     return RzdApi(Config(), transport=transport), transport  # type: ignore[arg-type]
 
 
+def make_configured_api(config: Config, *payloads: Any) -> tuple[RzdApi, FakeTransport]:
+    transport = FakeTransport(list(payloads))
+    return RzdApi(config, transport=transport), transport  # type: ignore[arg-type]
+
+
 def load_fixture(name: str) -> Any:
     return json.loads((Path(__file__).parent / "fixtures" / name).read_text(encoding="utf-8"))
 
@@ -171,6 +176,39 @@ def test_find_stations_parses_current_category_response() -> None:
     assert stations[1].transport_type == "train"
 
 
+def test_find_stations_dedupes_only_exact_enriched_station_identities() -> None:
+    api, _ = make_api(
+        [
+            {
+                "nodeId": "node-1",
+                "cityId": "city-1",
+                "expressCode": "2000000",
+                "name": "Москва",
+                "Codes": {"Railway": "2000000", "Cbdpr": "101"},
+            },
+            {
+                "nodeId": "node-2",
+                "cityId": "city-2",
+                "expressCode": "2000000",
+                "name": "Москва",
+                "Codes": {"Railway": "2000000", "Cbdpr": "102"},
+            },
+            {
+                "nodeId": "node-1",
+                "cityId": "city-1",
+                "expressCode": "2000000",
+                "name": "Москва",
+                "Codes": {"Railway": "2000000", "Cbdpr": "101"},
+            },
+        ]
+    )
+
+    stations = api.find_stations(query="Москва", transport_type="rail", group_results=True)
+
+    assert len(stations) == 2
+    assert [station.node_id for station in stations] == ["node-1", "node-2"]
+
+
 def test_transfer_search_builds_contract_and_parses_reference_fixture() -> None:
     api, transport = make_api(load_fixture("transfer-search.json"))
     result = api.search_transfers(
@@ -188,13 +226,14 @@ def test_transfer_search_builds_contract_and_parses_reference_fixture() -> None:
     assert len(first.legs) == 2
     assert first.price == 5534.1
     assert first.max_price == 18562.3
-    assert first.incomplete is False
+    assert first.incomplete is None
     assert first.ttl_min_expire_time == "2026-07-30T18:21:42Z"
     assert first.departure_time == "2026-09-11T01:00:00+03:00"
     assert first.arrival_time == "2026-09-11T18:58:00+03:00"
     assert first.origin and first.origin.city_name == "Москва"
     assert first.destination and first.destination.name == "Исакогорка"
     assert first.legs[0].provider_type == "b2brails"
+    assert first.legs[0].incomplete is False
     assert first.legs[0].booking_system == "Express3"
     assert first.legs[0].transport_types == ["Train"]
     assert first.legs[0].trips[0].number == "002Э"
@@ -232,18 +271,79 @@ def test_transfer_search_builds_contract_and_parses_reference_fixture() -> None:
     assert body["filters"][0]["exact_filter"]["param_values"] == ["b2brails", "cbdpr"]
 
 
+def test_transfer_search_uses_custom_b2b_host_for_mmp_endpoint() -> None:
+    api, transport = make_configured_api(
+        Config(b2b_base_url="http://localhost/mock/apib2b/p/"),
+        {},
+    )
+
+    api.search_transfers(TransferSearchRequest("a", "b", "2099-01-01"))
+
+    url = transport.calls[0]["url"]
+    assert url == "http://localhost/mock/apib2b/mmp/onewayRoutesStream/v2"
+    assert "ticket.rzd.ru" not in url
+
+    api, transport = make_configured_api(
+        Config(b2b_base_url="http://localhost/mock/custom-b2b"),
+        {},
+    )
+
+    api.search_transfers(TransferSearchRequest("a", "b", "2099-01-01"))
+
+    url = transport.calls[0]["url"]
+    assert url == "http://localhost/mock/custom-b2b/mmp/onewayRoutesStream/v2"
+    assert "ticket.rzd.ru" not in url
+
+
+def test_transfer_route_does_not_fabricate_aggregate_price_from_first_leg() -> None:
+    api, _ = make_api(
+        {
+            "multi_modal_routes": [
+                {
+                    "routes": [
+                        {
+                            "min_price": {"kopecks": "12345"},
+                            "segments": [],
+                        }
+                    ]
+                }
+            ]
+        }
+    )
+
+    route = api.search_transfers(TransferSearchRequest("a", "b", "2099-01-01")).routes[0]
+
+    assert route.price is None
+    assert route.currency is None
+    assert route.legs[0].price == 123.45
+
+
 def test_transfer_search_empty_incomplete_and_malformed_cases() -> None:
     api, _ = make_api({})
     assert api.search_transfers(TransferSearchRequest("a", "b", "2099-01-01")).routes == []
 
-    payload = {"multi_modal_routes": [{"routes": [{"incomplete": True}], "transfers": []}]}
-    api, _ = make_api(payload)
-    result = api.search_transfers(TransferSearchRequest("a", "b", "2099-01-01"))
-    assert result.routes[0].incomplete is True
-
     api, _ = make_api({"multi_modal_routes": {}})
     with pytest.raises(RzdSchemaError):
         api.search_transfers(TransferSearchRequest("a", "b", "2099-01-01"))
+
+
+@pytest.mark.parametrize(
+    ("route_node", "expected"),
+    [
+        ({}, None),
+        ({"incomplete": False}, False),
+        ({"incomplete": True}, True),
+        ({"routes": [{"incomplete": True}]}, True),
+    ],
+)
+def test_transfer_route_preserves_incomplete_tristate(
+    route_node: dict[str, Any], expected: bool | None
+) -> None:
+    api, _ = make_api({"multi_modal_routes": [route_node]})
+
+    route = api.search_transfers(TransferSearchRequest("a", "b", "2099-01-01")).routes[0]
+
+    assert route.incomplete is expected
 
 
 @pytest.mark.parametrize(

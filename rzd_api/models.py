@@ -154,7 +154,7 @@ class TransferRoute(ModelMixin):
     currency: str | None = None
     max_price: float | None = None
     available_places: int | None = None
-    incomplete: bool = False
+    incomplete: bool | None = None
     ttl_min_expire_time: str | None = None
     ttl_max_expire_time: str | None = None
     raw: JsonObject = field(default_factory=dict)

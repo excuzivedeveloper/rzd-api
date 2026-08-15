@@ -45,7 +45,7 @@ class RzdApi:
         parsed_base_url = urlsplit(self.base_url)
         site_url = urlunsplit((parsed_base_url.scheme, parsed_base_url.netloc, "", "", ""))
         self.b2b_base_url = (config.b2b_base_url or f"{site_url}/apib2b/p").rstrip("/")
-        self.mmp_base_url = f"{site_url}/apib2b/mmp"
+        self.mmp_base_url = self._derive_mmp_base_url(config.b2b_base_url, site_url)
         self.transport = transport or RzdTransport(config)
 
     def get_train_routes(
@@ -184,9 +184,11 @@ class RzdApi:
                 "The station suggestion response contains unsupported station nodes."
             )
         stations = list(self._parse_station_nodes(nodes))
-        unique: dict[tuple[str, str], Station] = {}
+        unique: dict[
+            tuple[str, str, str | None, str | None, tuple[tuple[str, str], ...]], Station
+        ] = {}
         for station in stations:
-            unique[(station.name, station.code)] = station
+            unique[self._station_identity_key(station)] = station
         return list(unique.values())
 
     def search_transfers(self, request: TransferSearchRequest) -> TransferSearchResult:
@@ -540,6 +542,7 @@ class RzdApi:
         first_trip = next((leg.trips[0] for leg in legs if leg.trips), None)
         last_trip = next((leg.trips[-1] for leg in reversed(legs) if leg.trips), None)
         incomplete = cls._boolean_or_none(node, "incomplete")
+        has_incomplete_leg = any(leg.incomplete is True for leg in legs)
         return TransferRoute(
             legs=legs,
             transfers=transfers,
@@ -549,12 +552,11 @@ class RzdApi:
             ),
             departure_time=first_trip.departure_time if first_trip else None,
             arrival_time=last_trip.arrival_time if last_trip else None,
-            price=cls._money(node, "min_price") or cls._first_number([leg.price for leg in legs]),
-            currency=cls._currency(node, "min_price")
-            or cls._first_string([leg.currency for leg in legs]),
+            price=cls._money(node, "min_price"),
+            currency=cls._currency(node, "min_price"),
             max_price=cls._money(node, "max_price"),
             available_places=cls._integer(node, "free_places"),
-            incomplete=bool(incomplete) or any(leg.incomplete is True for leg in legs),
+            incomplete=True if has_incomplete_leg else incomplete,
             ttl_min_expire_time=cls._string(node, "ttl_min_expire_time")
             or cls._first_string([leg.ttl_min_expire_time for leg in legs]),
             ttl_max_expire_time=cls._string(node, "ttl_max_expire_time")
@@ -784,6 +786,20 @@ class RzdApi:
         return value
 
     @staticmethod
+    def _derive_mmp_base_url(configured_b2b_base_url: str | None, site_url: str) -> str:
+        if configured_b2b_base_url is None:
+            return f"{site_url}/apib2b/mmp"
+
+        parsed = urlsplit(configured_b2b_base_url.rstrip("/"))
+        segments = [segment for segment in parsed.path.split("/") if segment]
+        if segments and segments[-1] == "p":
+            segments[-1] = "mmp"
+        else:
+            segments.append("mmp")
+        path = "/" + "/".join(segments) if segments else "/mmp"
+        return urlunsplit((parsed.scheme, parsed.netloc, path, "", ""))
+
+    @staticmethod
     def _object_payload(payload: JsonPayload, endpoint: str) -> JsonObject:
         if not isinstance(payload, dict):
             raise RzdSchemaError(f"The {endpoint} response must be an object.")
@@ -795,6 +811,18 @@ class RzdApi:
         if value is None:
             raise RzdSchemaError(f"The {endpoint} response has no {key} field.")
         return value
+
+    @staticmethod
+    def _station_identity_key(
+        station: Station,
+    ) -> tuple[str, str, str | None, str | None, tuple[tuple[str, str], ...]]:
+        relevant_codes = {
+            key: value
+            for key, value in station.codes.items()
+            if key in {"Railway", "Cbdpr"} and value not in (None, "")
+        }
+        code_items = tuple(sorted((key, str(value)) for key, value in relevant_codes.items()))
+        return (station.name, station.code, station.node_id, station.city_id, code_items)
 
     @classmethod
     def _transfer_request_body(cls, request: TransferSearchRequest) -> JsonObject:
