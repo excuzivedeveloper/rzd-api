@@ -109,6 +109,7 @@ library usage.
 | Метод | Результат |
 |---|---|
 | `search_tickets(...)` | `list[TrainRoute]` или `RoundTripResult` |
+| `search_transfers(from_node, to_node, departure_date, ...)` | `TransferSearchResult` |
 | `find_stations(query, ...)` | `list[Station]` |
 | `resolve_station_code(station)` | код станции |
 | `get_carriages(...)` | `CarriageResult` |
@@ -143,8 +144,14 @@ with RzdClient() as client:
 
 `only_with_seats=True` фильтрует по доступности мест из `CarGroups`. Современный
 pricing endpoint не поддерживает маршруты с пересадками и фильтр типа транспорта,
-поэтому `include_transfers=True` и `transport_type="trains"|"suburban"` явно
-возвращают `NotImplementedError`.
+поэтому `include_transfers=True` и `transport_type="trains"|"suburban"` у
+`search_tickets()` явно возвращают `NotImplementedError`.
+
+`search_transfers()` использует отдельный multimodal endpoint
+`/apib2b/mmp/onewayRoutesStream/v2`, принимает NodeId из `find_stations()` и
+по умолчанию ищет только железнодорожные и пригородные варианты (`b2brails`,
+`cbdpr`). Ответ сохраняет typed routes, legs, trips, nested train pricing,
+interstation transfer metadata, TTL and `incomplete` flags.
 
 ### Конфигурация
 

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from datetime import date, datetime
+from enum import Enum
 from typing import Any, cast
 
 JsonObject = dict[str, Any]
@@ -19,9 +21,150 @@ class Station(ModelMixin):
     code: str
     raw: JsonObject = field(default_factory=dict)
     node_id: str | None = None
+    city_id: str | None = None
+    timezone: str | None = None
+    codes: JsonObject = field(default_factory=dict)
     node_type: str | None = None
     transport_type: str | None = None
     region: str | None = None
+    country: str | None = None
+
+
+class TransferProvider(str, Enum):
+    RAILS = "b2brails"
+    SUBURBAN = "cbdpr"
+
+
+@dataclass(slots=True)
+class TransferSearchRequest(ModelMixin):
+    origin: str
+    destination: str
+    departure_date: date | datetime | str
+    min_trips: int = 1
+    max_trips: int = 3
+    max_results: int = 3
+    providers: tuple[TransferProvider | str, ...] = (
+        TransferProvider.RAILS,
+        TransferProvider.SUBURBAN,
+    )
+
+    def __post_init__(self) -> None:
+        self.origin = self.origin.strip()
+        self.destination = self.destination.strip()
+        if not self.origin or not self.destination:
+            raise ValueError("origin and destination node ids must not be empty.")
+        if self.min_trips < 1:
+            raise ValueError("min_trips must be greater than or equal to 1.")
+        if self.max_trips < self.min_trips:
+            raise ValueError("max_trips must be greater than or equal to min_trips.")
+        if self.max_results < 1:
+            raise ValueError("max_results must be greater than or equal to 1.")
+        if not self.providers:
+            raise ValueError("providers must not be empty.")
+
+    def provider_values(self) -> list[str]:
+        return [
+            provider.value if isinstance(provider, TransferProvider) else str(provider)
+            for provider in self.providers
+        ]
+
+
+@dataclass(slots=True)
+class TransferPlace(ModelMixin):
+    key: str | None
+    name: str | None
+    name_en: str | None
+    city_name: str | None
+    city_key: str | None
+    raw: JsonObject = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class TransferProduct(ModelMixin):
+    price: float | None
+    currency: str | None
+    free_places: int | None
+    product_type: str | None
+    service_classes: list[str] = field(default_factory=list)
+    carriers: list[str] = field(default_factory=list)
+    ttl_rule_key: str | None = None
+    ttl_expire_time: str | None = None
+    raw: JsonObject = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class TransferTrip(ModelMixin):
+    provider_type: str | None
+    number: str | None
+    origin: TransferPlace | None
+    destination: TransferPlace | None
+    departure_time: str | None
+    arrival_time: str | None
+    price: float | None
+    currency: str | None
+    max_price: float | None
+    available_places: int | None
+    distance_km: int | None
+    transport_type: str | None
+    products: list[TransferProduct] = field(default_factory=list)
+    train_pricing: list[TrainRoute] = field(default_factory=list)
+    raw: JsonObject = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class TransferLeg(ModelMixin):
+    provider_type: str | None
+    booking_system: str | None
+    origin: TransferPlace | None
+    destination: TransferPlace | None
+    departure_time: str | None
+    arrival_time: str | None
+    price: float | None
+    currency: str | None
+    max_price: float | None
+    available_places: int | None
+    transport_types: list[str] = field(default_factory=list)
+    trips: list[TransferTrip] = field(default_factory=list)
+    incomplete: bool | None = None
+    ttl_min_expire_time: str | None = None
+    ttl_max_expire_time: str | None = None
+    raw: JsonObject = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class TransferInterstation(ModelMixin):
+    origin: TransferPlace | None
+    destination: TransferPlace | None
+    price: float | None
+    currency: str | None
+    duration_minutes: int | None
+    duration_seconds: int | None
+    raw: JsonObject = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class TransferRoute(ModelMixin):
+    legs: list[TransferLeg] = field(default_factory=list)
+    transfers: list[TransferInterstation] = field(default_factory=list)
+    origin: TransferPlace | None = None
+    destination: TransferPlace | None = None
+    departure_time: str | None = None
+    arrival_time: str | None = None
+    price: float | None = None
+    currency: str | None = None
+    max_price: float | None = None
+    available_places: int | None = None
+    incomplete: bool = False
+    ttl_min_expire_time: str | None = None
+    ttl_max_expire_time: str | None = None
+    raw: JsonObject = field(default_factory=dict)
+
+
+@dataclass(slots=True)
+class TransferSearchResult(ModelMixin):
+    routes: list[TransferRoute] = field(default_factory=list)
+    request_id: str | None = None
+    raw: JsonObject = field(default_factory=dict)
 
 
 @dataclass(slots=True)
