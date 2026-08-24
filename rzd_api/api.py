@@ -970,8 +970,12 @@ class RzdApi:
     def _currency(node: JsonObject, key: str) -> str | None:
         value = node.get(key)
         if isinstance(value, dict):
-            currency = value.get("currency") or value.get("currency_code")
-            return str(currency) if currency not in (None, "") else "RUB"
+            for currency_key in ("currency", "currency_code"):
+                currency = value.get(currency_key)
+                if currency is not None:
+                    normalized = str(currency).strip()
+                    if normalized:
+                        return normalized
         return None
 
     @classmethod

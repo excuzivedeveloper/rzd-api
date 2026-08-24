@@ -152,6 +152,9 @@ pricing endpoint не поддерживает маршруты с переса�
 по умолчанию ищет только железнодорожные и пригородные варианты (`b2brails`,
 `cbdpr`). Ответ сохраняет typed routes, legs, trips, nested train pricing,
 interstation transfer metadata, TTL and `incomplete` flags.
+Transfer currency is populated only from an explicit provider `currency` or
+`currency_code`; when it is absent or blank, the amount may remain populated while
+currency is `None`.
 
 ### Конфигурация
 
