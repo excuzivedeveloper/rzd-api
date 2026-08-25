@@ -40,6 +40,35 @@ def load_fixture(name: str) -> Any:
     return json.loads((Path(__file__).parent / "fixtures" / name).read_text(encoding="utf-8"))
 
 
+def transfer_money_payload(**currency_fields: Any) -> dict[str, Any]:
+    def money() -> dict[str, Any]:
+        return {"kopecks": "12345", **currency_fields}
+
+    return {
+        "multi_modal_routes": [
+            {
+                "min_price": money(),
+                "routes": [
+                    {
+                        "min_price": money(),
+                        "segments": [
+                            {
+                                "trips": [
+                                    {
+                                        "min_price": money(),
+                                        "products": [{"price": money()}],
+                                    }
+                                ]
+                            }
+                        ],
+                    }
+                ],
+                "transfers": [{"min_price": money()}],
+            }
+        ]
+    }
+
+
 def test_train_routes_builds_current_request_and_parses_models() -> None:
     api, transport = make_api(
         {
@@ -316,6 +345,55 @@ def test_transfer_route_does_not_fabricate_aggregate_price_from_first_leg() -> N
     assert route.price is None
     assert route.currency is None
     assert route.legs[0].price == 123.45
+
+
+def test_transfer_money_without_currency_preserves_amount_at_every_level() -> None:
+    api, _ = make_api(transfer_money_payload())
+
+    route = api.search_transfers(TransferSearchRequest("a", "b", "2099-01-01")).routes[0]
+    money_models = [
+        route,
+        route.legs[0],
+        route.legs[0].trips[0],
+        route.legs[0].trips[0].products[0],
+        route.transfers[0],
+    ]
+
+    assert all(model.price == 123.45 for model in money_models)
+    assert all(model.currency is None for model in money_models)
+
+
+@pytest.mark.parametrize(
+    ("currency_fields", "expected"),
+    [
+        ({"currency": "RUB"}, "RUB"),
+        ({"currency": "KZT"}, "KZT"),
+        ({"currency_code": "KZT"}, "KZT"),
+        ({"currency": ""}, None),
+        ({"currency": None}, None),
+        ({"currency_code": ""}, None),
+        ({"currency_code": None}, None),
+    ],
+)
+def test_transfer_money_preserves_only_explicit_currency(
+    currency_fields: dict[str, Any], expected: str | None
+) -> None:
+    api, _ = make_api(transfer_money_payload(**currency_fields))
+
+    route = api.search_transfers(TransferSearchRequest("a", "b", "2099-01-01")).routes[0]
+
+    assert route.price == 123.45
+    assert route.currency == expected
+
+
+@pytest.mark.parametrize("currency_key", ["currency", "currency_code"])
+def test_transfer_money_treats_whitespace_only_currency_as_unknown(currency_key: str) -> None:
+    api, _ = make_api(transfer_money_payload(**{currency_key: "   "}))
+
+    route = api.search_transfers(TransferSearchRequest("a", "b", "2099-01-01")).routes[0]
+
+    assert route.price == 123.45
+    assert route.currency is None
 
 
 def test_transfer_search_empty_incomplete_and_malformed_cases() -> None:
