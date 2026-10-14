@@ -287,7 +287,7 @@ def test_transfer_search_builds_contract_and_parses_reference_fixture() -> None:
     call = transport.calls[0]
     assert call["method"] == "POST"
     assert call["url"].endswith("/apib2b/mmp/onewayRoutesStream/v2")
-    assert call["headers"]["Cookie"] == "LANG_SITE=ru"
+    assert "headers" not in call
     body = call["json_body"]
     assert body["start_location"]["city"]["key"] == "5a323c29340c7441a0a556bb"
     assert body["finish_location"]["city"]["key"] == "5a13baf9340c745ca1e80436"
@@ -298,6 +298,14 @@ def test_transfer_search_builds_contract_and_parses_reference_fixture() -> None:
     assert body["max_results"] == 3
     assert body["system_params"]["detailed_location"] is True
     assert body["filters"][0]["exact_filter"]["param_values"] == ["b2brails", "cbdpr"]
+
+
+def test_transfer_search_non_default_language_does_not_add_cookie() -> None:
+    api, transport = make_configured_api(Config(language="en"), {})
+
+    api.search_transfers(TransferSearchRequest("a", "b", "2099-01-01"))
+
+    assert "headers" not in transport.calls[0]
 
 
 def test_transfer_search_uses_custom_b2b_host_for_mmp_endpoint() -> None:
