@@ -24,7 +24,11 @@ jobs:
       (github.event_name == 'push' &&
        (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/wayfound-integration')) ||
       (github.event_name == 'workflow_dispatch' &&
-       (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/wayfound-integration'))
+       github.repository == 'excuzivedeveloper/rzd-api' &&
+       github.actor == 'excuzivedeveloper' &&
+       (github.ref == 'refs/heads/master' ||
+        github.ref == 'refs/heads/wayfound-integration' ||
+        github.ref == 'refs/heads/ci/rzd-codence-dedicated-runner'))
     runs-on: [self-hosted, Linux, X64, rzd-api, codence-rzd]
     timeout-minutes: 60
     strategy:
@@ -110,7 +114,11 @@ jobs:
       (github.event_name == 'push' &&
        (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/wayfound-integration')) ||
       (github.event_name == 'workflow_dispatch' &&
-       (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/wayfound-integration'))
+       github.repository == 'excuzivedeveloper/rzd-api' &&
+       github.actor == 'excuzivedeveloper' &&
+       (github.ref == 'refs/heads/master' ||
+        github.ref == 'refs/heads/wayfound-integration' ||
+        github.ref == 'refs/heads/ci/rzd-codence-dedicated-runner'))
     runs-on: [self-hosted, Linux, X64, rzd-api, codence-rzd]
     timeout-minutes: 20
     defaults:
@@ -141,7 +149,11 @@ jobs:
       (github.event_name == 'push' &&
        (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/wayfound-integration')) ||
       (github.event_name == 'workflow_dispatch' &&
-       (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/wayfound-integration'))
+       github.repository == 'excuzivedeveloper/rzd-api' &&
+       github.actor == 'excuzivedeveloper' &&
+       (github.ref == 'refs/heads/master' ||
+        github.ref == 'refs/heads/wayfound-integration' ||
+        github.ref == 'refs/heads/ci/rzd-codence-dedicated-runner'))
     runs-on: [self-hosted, Linux, X64, rzd-api, codence-rzd]
     timeout-minutes: 45
     defaults:

@@ -71,6 +71,53 @@ initialization/tool-list regression. Trigger types remain internal
 `max-parallel: 1` serialize execution without canceling other PR workflows. Cleanup only targets artifacts created by the current job;
 no global prune or production host changes are authorized.
 
+### Temporary trusted manual dispatch gate (2026-10-19)
+
+For this pre-merge CI gate only, all three jobs also accept
+`workflow_dispatch` on `refs/heads/ci/rzd-codence-dedicated-runner`, in
+`excuzivedeveloper/rzd-api`, initiated by `excuzivedeveloper`. The same
+repository/actor restrictions apply to manual dispatch on `master` and
+`wayfound-integration`. Other dispatch refs, repositories and actors are denied
+by the job conditions. No workflow inputs or arbitrary SHA/command execution
+path are added. Retaining or removing this temporary branch allowance requires
+a later owner-approved cleanup/merge decision.
+
+The owner's proposed GitHub-side execution policy covers **all workflows**,
+allows only actor `excuzivedeveloper`, and only events `push` and
+`workflow_dispatch`. Its creation, **Active enforcement**, effective scope and
+admission behavior have **not been independently verified**. When that policy is
+effective, automatic `pull_request` CI is deliberately unavailable, including
+internal PRs; the YAML trigger remains unchanged as defense in depth. A saved
+form or an active workflow identity is not proof of an active execution policy.
+Independent SERVER TEST must verify the effective policy, branch trust and
+runner eligibility before activation. Keep the runner **OFF** meanwhile.
+
+GitHub supports selecting a branch for an existing default-branch workflow.
+The same `.github/workflows/ci.yml` exists on default branch `master` with
+`workflow_dispatch`. After separate authorization, the trusted operator can
+select this PR branch in the UI, or use the documented branch-specific CLI path:
+
+```sh
+# Future authorized operation only; not executed or authorized by this document.
+gh workflow run ci.yml --repo excuzivedeveloper/rzd-api --ref ci/rzd-codence-dedicated-runner
+```
+
+Before dispatch, verify the trusted authenticated actor, PR #4 repository/ref
+and reviewed HEAD. After dispatch, require the run's event, head branch and
+`head_sha` to match `workflow_dispatch`, this exact branch and that reviewed
+HEAD; any mismatch or branch advance is a STOP, not exact-head acceptance.
+See [manual workflow runs](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow),
+[dispatch event semantics](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#workflow_dispatch)
+and [execution policies](https://docs.github.com/en/actions/how-tos/administer/control-workflow-execution).
+
+Legacy run `39021303502` at pre-follow-up HEAD
+`cce9a80301a6b745a38a72903c35916b1b854a38` was observed on 2026-10-19 with
+four cancelled jobs, three queued and zero successes. It is incomplete and is
+not acceptance evidence. This follow-up is static/offline validation only:
+**CI_NOT_RUN / FULL_CI_PASS=NO**; runner state is based on the supplied SERVER
+TEST checkpoint, not a new host observation. A new full exact-head run and
+independent review of this security-relevant delta remain prerequisites.
+
 ### Blocking before runner activation: external trust policy
 
 **Workflow `if:` tests are only defense in depth, not a fork-PR isolation
@@ -100,9 +147,10 @@ and organization Actions settings** before allowing this runner online:
    The existing one-CPU, ~1.9 GiB host has not run this exact real-image job.
 5. Have an independent Reviewer accept the static workflow/security review.
    Only then may Orchestrator obtain separate explicit owner authorization to
-   enable/start **this exact unit**, observe a *single* normal queued/automatic
-   exact-head CI acceptance run, classify failures, and disable/stop safely on
-   unexpected state. Runner activation is not authorized by this PR or doc.
+   enable/start **this exact unit** and obtain a *single* trusted, explicitly
+   authorized manual exact-head CI acceptance run with the ref/SHA verification
+   above, classify failures, and disable/stop safely on unexpected state. Runner
+   activation is not authorized by this PR or doc.
 
 The validation may legitimately report baseline-identical repository Ruff /
 format findings or the pre-existing optional `mcp>=1.28.1,<1.29` dependency
