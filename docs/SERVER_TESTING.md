@@ -71,6 +71,47 @@ initialization/tool-list regression. Trigger types remain internal
 `max-parallel: 1` serialize execution without canceling other PR workflows. Cleanup only targets artifacts created by the current job;
 no global prune or production host changes are authorized.
 
+### Local toolchain compatibility follow-up (2026-10-21)
+
+The owner-accepted SERVER TEST checkpoint dated 2026-10-20 reports
+**SERVER_LOCAL_TOOLCHAIN=PASS_WITH_LIMITS**: managed Python 3.10–3.14 discovery
+worked under UID 1003 with a clean process environment and `uv --no-config`.
+It also reports that `aa-exec -p podman -- podman info` permits rootless user
+namespaces under the existing hardened AppArmor configuration, while plain
+Podman is denied. These are reported local observations, not new Coder host
+checks, runner admission evidence or exact combined-head CI acceptance.
+The runner remains **OFF as reported**; the real image/MCP was not run in that
+local workaround check, and approximately 1.2 GiB available RAM leaves resource
+risk for the future image job.
+
+Both workflow interpreter/venv setup steps now invoke the dedicated absolute
+uv binary through `env -i`, with only the intended
+`HOME=/home/rzd-runner`, `PATH=/usr/bin:/bin` and
+`UV_PYTHON_INSTALL_DIR=/home/rzd-runner/.local/share/uv/python`.
+Each invocation includes `--no-config`; managed discovery and both venv
+creations retain `--no-python-downloads`. This removes inherited uv/Python,
+virtualenv and XDG overrides from uv processes without changing host
+configuration. Existing interpreter-version assertions remain mandatory.
+
+All Podman operations use `aa-exec -p podman -- podman`, including build,
+run, port/inspect probes, container/image existence checks and cleanup.
+The profile must already exist and allow the operation; there is no plain
+Podman/rootful fallback or host policy adjustment. UID 1003, rootless setup,
+loopback publication, resource/security flags and job-owned artifact guards
+remain unchanged. Static/mocked routing checks do not prove real AppArmor,
+Podman build or resource compatibility; independent review and separately
+authorized final combined-head CI are still required.
+
+A new commit on PR #4 invalidates the private rewrite sandbox's old exact
+SHA map for this branch. In particular, do not reuse
+`434bf68075dfce27cd450bd76c190e8cd8436738` as a future published PR #4 HEAD.
+After the final reviewed commit, Orchestrator may request one bounded refresh
+of the affected graph/diff. This follow-up neither changes that sandbox nor
+authorizes history publication; preserve recovery material, original PRs,
+master and the existing WayFound pin pending a separate decision.
+Historical credential authenticity/revocation remains **UNKNOWN**;
+GitHub-managed PR refs are a separate exposure/retention issue.
+
 ### Temporary trusted manual dispatch gate (2026-10-19)
 
 For this pre-merge CI gate only, all three jobs also accept
@@ -152,9 +193,11 @@ and organization Actions settings** before allowing this runner online:
    above, classify failures, and disable/stop safely on unexpected state. Runner
    activation is not authorized by this PR or doc.
 
-The validation may legitimately report baseline-identical repository Ruff /
-format findings or the pre-existing optional `mcp>=1.28.1,<1.29` dependency
-security finding; **neither is waived**. A disabled runner and queued jobs are
+This PR #4 branch has not integrated PR #5's source/dependency fixes.
+Its unchanged source base may therefore still report the known Ruff/format or
+old MCP dependency findings; none is waived. Reported PR #5 local tests/audit
+PASS belongs to its exact head, not to this workflow branch or a future
+combined tree. A disabled runner and queued jobs are
 **NOT RUN**, not green checks. GitHub Actions, Python matrix, Gitleaks, rootless
 image, health and MCP remain **unproven** until actually executed at the exact
 commit. This staged change does not touch WayFound or production and does not

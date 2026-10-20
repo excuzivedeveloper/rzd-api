@@ -50,13 +50,16 @@ jobs:
           set -euo pipefail
           test "$(id -un)" = rzd-runner
           test "$(id -u)" = 1003
-          UV_BIN="$HOME/.local/bin/uv"
+          UV_BIN="/home/rzd-runner/.local/bin/uv"
           test -x "$UV_BIN"
-          python_path="$("$UV_BIN" python find --managed-python --no-python-downloads "$REQUESTED_PYTHON")"
+          uv_command=(env -i HOME=/home/rzd-runner PATH=/usr/bin:/bin
+            UV_PYTHON_INSTALL_DIR=/home/rzd-runner/.local/share/uv/python
+            "$UV_BIN" --no-config)
+          python_path="$("${uv_command[@]}" python find --managed-python --no-python-downloads "$REQUESTED_PYTHON")"
           test -x "$python_path"
           CI_VENV="$(mktemp -d "$RUNNER_TEMP/rzd-quality.XXXXXXXX")"
           echo "CI_VENV=$CI_VENV" >> "$GITHUB_ENV"
-          "$UV_BIN" venv --no-python-downloads --seed --python "$python_path" "$CI_VENV"
+          "${uv_command[@]}" venv --no-python-downloads --seed --python "$python_path" "$CI_VENV"
           "$CI_VENV/bin/python" - "$REQUESTED_PYTHON" <<'PY'
           import sys
           expected = tuple(map(int, sys.argv[1].split('.')))
@@ -176,13 +179,17 @@ jobs:
           test -d "$XDG_RUNTIME_DIR"
           test -O "$XDG_RUNTIME_DIR"
           command -v podman >/dev/null
-          UV_BIN="$HOME/.local/bin/uv"
+          command -v aa-exec >/dev/null
+          UV_BIN="/home/rzd-runner/.local/bin/uv"
           test -x "$UV_BIN"
-          python_path="$("$UV_BIN" python find --managed-python --no-python-downloads 3.12)"
+          uv_command=(env -i HOME=/home/rzd-runner PATH=/usr/bin:/bin
+            UV_PYTHON_INSTALL_DIR=/home/rzd-runner/.local/share/uv/python
+            "$UV_BIN" --no-config)
+          python_path="$("${uv_command[@]}" python find --managed-python --no-python-downloads 3.12)"
           test -x "$python_path"
           CI_VENV="$(mktemp -d "$RUNNER_TEMP/rzd-mcp.XXXXXXXX")"
           echo "CI_VENV=$CI_VENV" >> "$GITHUB_ENV"
-          "$UV_BIN" venv --no-python-downloads --seed --python "$python_path" "$CI_VENV"
+          "${uv_command[@]}" venv --no-python-downloads --seed --python "$python_path" "$CI_VENV"
           "$CI_VENV/bin/python" - <<'PY'
           import sys
           assert sys.version_info[:2] == (3, 12), sys.version
@@ -200,20 +207,20 @@ jobs:
           set -euo pipefail
           image="localhost/rzd-api-ci:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           echo "CI_IMAGE=$image" >> "$GITHUB_ENV"
-          podman --cgroup-manager=cgroupfs build --memory=512m -t "$image" .
+          aa-exec -p podman -- podman --cgroup-manager=cgroupfs build --memory=512m -t "$image" .
       - name: Start container on loopback
         run: |
           set -euo pipefail
           container="rzd-api-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           echo "CI_CONTAINER=$container" >> "$GITHUB_ENV"
-          podman --cgroup-manager=cgroupfs run -d \
+          aa-exec -p podman -- podman --cgroup-manager=cgroupfs run -d \
             --name "$container" --network=slirp4netns \
             --memory=384m --memory-swap=512m --pids-limit=64 \
             --cap-drop=all --security-opt=no-new-privileges \
             -p 127.0.0.1::8000 \
             -e MCP_AUTH_TOKEN=ci-token-00000000000000000000000000000000 \
             "$CI_IMAGE"
-          address="$(podman --cgroup-manager=cgroupfs port "$container" 8000/tcp)"
+          address="$(aa-exec -p podman -- podman --cgroup-manager=cgroupfs port "$container" 8000/tcp)"
           [[ "$address" =~ ^127\.0\.0\.1:[0-9]+$ ]]
           echo "CI_MCP_ADDRESS=$address" >> "$GITHUB_ENV"
       - name: Wait for healthcheck
@@ -225,7 +232,7 @@ jobs:
             fi
             sleep 1
           done
-          podman --cgroup-manager=cgroupfs inspect --format '{{.State.Status}}' "$CI_CONTAINER"
+          aa-exec -p podman -- podman --cgroup-manager=cgroupfs inspect --format '{{.State.Status}}' "$CI_CONTAINER"
           exit 1
       - name: MCP initialize and list tools
         env:
@@ -239,13 +246,13 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -n "${CI_CONTAINER:-}" && "$CI_CONTAINER" == "rzd-api-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" ]]; then
-            if podman --cgroup-manager=cgroupfs container exists "$CI_CONTAINER"; then
-              podman --cgroup-manager=cgroupfs rm -f "$CI_CONTAINER"
+            if aa-exec -p podman -- podman --cgroup-manager=cgroupfs container exists "$CI_CONTAINER"; then
+              aa-exec -p podman -- podman --cgroup-manager=cgroupfs rm -f "$CI_CONTAINER"
             fi
           fi
           if [[ -n "${CI_IMAGE:-}" && "$CI_IMAGE" == "localhost/rzd-api-ci:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" ]]; then
-            if podman --cgroup-manager=cgroupfs image exists "$CI_IMAGE"; then
-              podman --cgroup-manager=cgroupfs rmi "$CI_IMAGE"
+            if aa-exec -p podman -- podman --cgroup-manager=cgroupfs image exists "$CI_IMAGE"; then
+              aa-exec -p podman -- podman --cgroup-manager=cgroupfs rmi "$CI_IMAGE"
             fi
           fi
           if [[ -n "${CI_VENV:-}" && "$CI_VENV" == "$RUNNER_TEMP"/rzd-mcp.* && -d "$CI_VENV" ]]; then
