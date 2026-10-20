@@ -586,9 +586,7 @@ class RzdApi:
                 else cls._parse_place(node.get("finish_location"))
             ),
             departure_time=(
-                first_trip.departure_time
-                if first_trip
-                else cls._string(node, "start_datetime")
+                first_trip.departure_time if first_trip else cls._string(node, "start_datetime")
             ),
             arrival_time=(
                 last_trip.arrival_time if last_trip else cls._string(node, "finish_datetime")
