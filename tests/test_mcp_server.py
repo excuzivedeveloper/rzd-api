@@ -5,10 +5,10 @@ from typing import Any
 
 import pytest
 
+from mcp_server import server
+
 anyio = pytest.importorskip("anyio")
 httpx = pytest.importorskip("httpx")
-
-from mcp_server import server
 
 pytestmark = pytest.mark.mcp
 
