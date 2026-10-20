@@ -193,11 +193,19 @@ and organization Actions settings** before allowing this runner online:
    above, classify failures, and disable/stop safely on unexpected state. Runner
    activation is not authorized by this PR or doc.
 
-This PR #4 branch has not integrated PR #5's source/dependency fixes.
-Its unchanged source base may therefore still report the known Ruff/format or
-old MCP dependency findings; none is waived. Reported PR #5 local tests/audit
-PASS belongs to its exact head, not to this workflow branch or a future
-combined tree. A disabled runner and queued jobs are
+On 2026-10-21, this PR #4 branch incorporated the two reviewed PR #5
+source/fixture/dependency commits from head
+`c922fadd3d00af57cd7d51ea78b0e1f24c1ce4fe`. The eight accepted source paths
+are identical to that head; the accepted PR #4 workflow is preserved.
+Earlier PR #5 local tests/audit PASS remains evidence for its original exact
+head, not full CI acceptance of this combined tree. No finding is waived.
+The container installs `.[mcp]` with the Python 3.12 runtime constraints;
+quality matrix and MCP-client jobs resolve `.[dev]` without those constraints.
+These are distinct dependency graphs. A clean Windows Python 3.12 dev install
+and strict audit on 2026-10-21 provide local evidence only; the future Linux
+matrix and actual constrained image still require exact-head CI validation.
+Do not apply the image lock indiscriminately across Python 3.10–3.14.
+A disabled runner and queued jobs are
 **NOT RUN**, not green checks. GitHub Actions, Python matrix, Gitleaks, rootless
 image, health and MCP remain **unproven** until actually executed at the exact
 commit. This staged change does not touch WayFound or production and does not
