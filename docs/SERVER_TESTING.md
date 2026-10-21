@@ -48,7 +48,88 @@ authenticate, or use passenger personal data.
 - Do not set `RZD_CA_BUNDLE` to a secret-bearing file.
 - Do not run repeated live smoke loops.
 
-## Dedicated Codence CI — staged, **not activated** (2026-10-17)
+## Proposed GitHub-hosted CI — not yet run (2026-10-21)
+
+The migration branch proposes standard `ubuntu-24.04` GitHub-hosted VMs for
+all three CI jobs. It is based on accepted combined PR #4 head
+`2fd9c1e3ce93a768f37ca6b31a42d9ff9cd2ed9d`, prepared on an isolated branch;
+this does not change PR #4 or authorize integration, dispatch or merge.
+**RUNNER=NOT ACTIVATED; FULL_CI_PASS=NO.** The former Codence runner is not
+needed by this proposal and must not be started or changed by this task.
+
+The `quality` job keeps Python 3.10–3.14, `max-parallel: 1` and the existing
+job/check names. Official `actions/setup-python` v7.0.0 is pinned to
+`5fda3b95a4ea91299a34e894583c3862153e4b97`; each job creates a temporary
+venv and asserts the exact Python major/minor. Gates remain offline pytest
+(`tests/ -m 'not integration'`) with branch coverage >=90%, Ruff check **and**
+format, Mypy, source `git archive` build/Twine and strict `pip-audit` on the
+installed dev graph. The container and test client still use distinct graphs:
+Dockerfile installs constrained `.[mcp]` on Python 3.12, while quality and
+client jobs install unconstrained `.[dev]`. Runtime pins are unchanged.
+
+The `secrets` job checks out full history (`fetch-depth: 0`) and downloads
+[Gitleaks 8.30.1](https://github.com/gitleaks/gitleaks/releases/tag/v8.30.1)
+from its upstream Linux x64 release. Before extraction/execution it checks the
+archive against the fixed SHA-256
+`551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb`
+(published upstream checksum/release-asset digest). The scan retains
+`git --redact --no-banner --exit-code=1 --log-opts='--all' .`, without ignores,
+HEAD-only narrowing or allow-fail. Reachable historical findings remain a
+blocking gate; credential authenticity/revocation is **UNKNOWN** and
+GitHub-managed PR refs/caches are a separate exposure question.
+
+The `docker` job uses stock Docker Engine on the fresh GitHub VM: actual
+Dockerfile build, bridge networking, ephemeral host port on **127.0.0.1 only**,
+384 MiB memory / 512 MiB memory+swap, 64 PIDs, all capabilities dropped and
+`no-new-privileges`. Health polling and the authenticated existing MCP
+initialize/list-tools/invalid-query regression remain mandatory. The CI token
+is synthetic. Docker daemon access is privileged within this disposable VM;
+the image itself still runs as its unchanged non-root Dockerfile user.
+The old Podman build's 512 MiB flag is not carried to modern Docker BuildKit,
+which has different build resource controls; the build uses hosted VM limits,
+while all container runtime bounds above remain enforced. No legacy-builder
+fallback, extra service or host configuration is introduced. Cleanup uses
+Docker inspect/rm/rmi only for guarded job-owned names, plus its own venv.
+No global prune, Codence/NLServer Docker access or service operation is allowed.
+
+Checkout remains pinned with `persist-credentials: false`; token permissions
+remain `contents: read`. Existing events and repo/actor/ref guards are unchanged,
+including owner-only manual dispatch on the previously approved PR #4 ref.
+The isolated migration branch is intentionally not added to the dispatch list.
+A push to it matches no CI push branch filter; no extra PR or dispatch is made.
+Other repository workflows keep their existing schedule/manual/release triggers.
+The owner-reported execution policy allows push/manual events only; its current
+effective enforcement is **UNVERIFIED**, and automatic PR CI is not claimed.
+Before any future run, the Owner/Orchestrator must independently verify in
+repository/organization Actions settings that the reviewed workflow, immutable
+actions, event, actor and ref are admitted by the intended policy. If automatic
+PR checks are required, the Owner must separately decide policy treatment of
+`pull_request`; Coder does not broaden settings or workflow allowlists.
+Startup-failure classification remains **UNKNOWN**; an empty check list or
+startup-failure record alone does not diagnose its cause.
+
+Standard hosted runner minutes for this **public rzd-api repository** are free;
+artifact/cache storage and other billing limits still apply. This does not
+claim free hosted execution for private WayFound. See GitHub's
+[runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
+and [Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions).
+
+Independent delta review, Orchestrator-coordinated PR #4 integration and any
+minimum affected history-map refresh must precede a separately owner-approved
+exact-head CI run. The parallel six-branch private history rehearsal and
+WayFound dependency pin remain separate workflows. No history sandbox,
+production deployment, NLServer state or live-provider validation is changed
+or newly verified here.
+
+## Historical Codence CI preparation — not the proposed architecture
+
+The following dated record describes the former proposal at/before PR #4 head
+`2fd9c1e3ce93a768f37ca6b31a42d9ff9cd2ed9d`. Its dedicated-runner labels,
+AppArmor/uv provisioning and activation checklist are historical context;
+they are not requirements or activation authority for the hosted proposal above.
+All old SHA references and validation limits below retain their original meaning.
+
+### Dedicated Codence CI — staged, **not activated** (2026-10-17)
 
 The `.github/workflows/ci.yml` change is prepared for **static review only** on a
 Draft PR against `wayfound-integration`. The separate repo-scoped `rzd-runner`
@@ -71,7 +152,7 @@ initialization/tool-list regression. Trigger types remain internal
 `max-parallel: 1` serialize execution without canceling other PR workflows. Cleanup only targets artifacts created by the current job;
 no global prune or production host changes are authorized.
 
-### Local toolchain compatibility follow-up (2026-10-21)
+#### Local toolchain compatibility follow-up (2026-10-21)
 
 The owner-accepted SERVER TEST checkpoint dated 2026-10-20 reports
 **SERVER_LOCAL_TOOLCHAIN=PASS_WITH_LIMITS**: managed Python 3.10–3.14 discovery
@@ -112,7 +193,7 @@ master and the existing WayFound pin pending a separate decision.
 Historical credential authenticity/revocation remains **UNKNOWN**;
 GitHub-managed PR refs are a separate exposure/retention issue.
 
-### Temporary trusted manual dispatch gate (2026-10-19)
+#### Temporary trusted manual dispatch gate (2026-10-19)
 
 For this pre-merge CI gate only, all three jobs also accept
 `workflow_dispatch` on `refs/heads/ci/rzd-codence-dedicated-runner`, in
@@ -159,7 +240,7 @@ not acceptance evidence. This follow-up is static/offline validation only:
 TEST checkpoint, not a new host observation. A new full exact-head run and
 independent review of this security-relevant delta remain prerequisites.
 
-### Blocking before runner activation: external trust policy
+#### Blocking before runner activation: external trust policy
 
 **Workflow `if:` tests are only defense in depth, not a fork-PR isolation
 boundary:** a fork can modify workflow YAML in its own PR. The owner and an

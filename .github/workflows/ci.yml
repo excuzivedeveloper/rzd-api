@@ -10,10 +10,9 @@ on:
 permissions:
   contents: read
 
-# Workflow guards are defense in depth, NOT a security boundary for fork PRs:
-# a fork PR can change the workflow itself. Keep the runner OFF until repository-
-# level fork-workflow approval/runner admission restrictions are independently verified.
-# Keep independent PR/push workflow histories: the single runner slot serializes jobs.
+# Workflow guards are defense in depth; repository Actions policies still apply.
+# Jobs use fresh standard GitHub-hosted VMs, read-only tokens and no provider secrets.
+# No self-managed runner activation or workflow dispatch is authorized by this change.
 
 jobs:
   quality:
@@ -29,7 +28,7 @@ jobs:
        (github.ref == 'refs/heads/master' ||
         github.ref == 'refs/heads/wayfound-integration' ||
         github.ref == 'refs/heads/ci/rzd-codence-dedicated-runner'))
-    runs-on: [self-hosted, Linux, X64, rzd-api, codence-rzd]
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -43,23 +42,18 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - name: Select managed Python and isolated venv
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Select Python and isolated venv
         env:
           REQUESTED_PYTHON: ${{ matrix.python-version }}
         run: |
           set -euo pipefail
-          test "$(id -un)" = rzd-runner
-          test "$(id -u)" = 1003
-          UV_BIN="/home/rzd-runner/.local/bin/uv"
-          test -x "$UV_BIN"
-          uv_command=(env -i HOME=/home/rzd-runner PATH=/usr/bin:/bin
-            UV_PYTHON_INSTALL_DIR=/home/rzd-runner/.local/share/uv/python
-            "$UV_BIN" --no-config)
-          python_path="$("${uv_command[@]}" python find --managed-python --no-python-downloads "$REQUESTED_PYTHON")"
-          test -x "$python_path"
           CI_VENV="$(mktemp -d "$RUNNER_TEMP/rzd-quality.XXXXXXXX")"
           echo "CI_VENV=$CI_VENV" >> "$GITHUB_ENV"
-          "${uv_command[@]}" venv --no-python-downloads --seed --python "$python_path" "$CI_VENV"
+          python -m venv "$CI_VENV"
           "$CI_VENV/bin/python" - "$REQUESTED_PYTHON" <<'PY'
           import sys
           expected = tuple(map(int, sys.argv[1].split('.')))
@@ -122,7 +116,7 @@ jobs:
        (github.ref == 'refs/heads/master' ||
         github.ref == 'refs/heads/wayfound-integration' ||
         github.ref == 'refs/heads/ci/rzd-codence-dedicated-runner'))
-    runs-on: [self-hosted, Linux, X64, rzd-api, codence-rzd]
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
       run:
@@ -135,14 +129,15 @@ jobs:
       - name: Full-history Gitleaks
         run: |
           set -euo pipefail
-          test "$(id -un)" = rzd-runner
-          test "$(id -u)" = 1003
-          GITLEAKS_BIN="$HOME/.local/bin/gitleaks"
-          if [[ ! -x "$GITLEAKS_BIN" ]]; then
-            GITLEAKS_BIN="$(command -v gitleaks)"
-          fi
-          test -x "$GITLEAKS_BIN"
-          "$GITLEAKS_BIN" git --redact --no-banner --exit-code=1 --log-opts='--all' .
+          GITLEAKS_DIR="$(mktemp -d "$RUNNER_TEMP/rzd-gitleaks.XXXXXXXX")"
+          trap 'rm -rf -- "$GITLEAKS_DIR"' EXIT
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            --output "$GITLEAKS_DIR/gitleaks.tar.gz" \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          (cd "$GITLEAKS_DIR" && echo '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tar.gz' | sha256sum --check --strict -)
+          tar -xzf "$GITLEAKS_DIR/gitleaks.tar.gz" -C "$GITLEAKS_DIR" gitleaks
+          "$GITLEAKS_DIR/gitleaks" version
+          "$GITLEAKS_DIR/gitleaks" git --redact --no-banner --exit-code=1 --log-opts='--all' .
 
   docker:
     name: Docker and MCP protocol
@@ -157,46 +152,31 @@ jobs:
        (github.ref == 'refs/heads/master' ||
         github.ref == 'refs/heads/wayfound-integration' ||
         github.ref == 'refs/heads/ci/rzd-codence-dedicated-runner'))
-    runs-on: [self-hosted, Linux, X64, rzd-api, codence-rzd]
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     defaults:
       run:
         shell: bash
-    env:
-      HOME: /home/rzd-runner
-      XDG_RUNTIME_DIR: /run/user/1003
-      DBUS_SESSION_BUS_ADDRESS: unix:path=/run/user/1003/bus
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
-      - name: Check dedicated user and rootless environment
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Check Docker and isolated client environment
         run: |
           set -euo pipefail
-          test "$(id -un)" = rzd-runner
-          test "$(id -u)" = 1003
-          test "$(id -u)" -ne 0
-          test -d "$XDG_RUNTIME_DIR"
-          test -O "$XDG_RUNTIME_DIR"
-          command -v podman >/dev/null
-          command -v aa-exec >/dev/null
-          UV_BIN="/home/rzd-runner/.local/bin/uv"
-          test -x "$UV_BIN"
-          uv_command=(env -i HOME=/home/rzd-runner PATH=/usr/bin:/bin
-            UV_PYTHON_INSTALL_DIR=/home/rzd-runner/.local/share/uv/python
-            "$UV_BIN" --no-config)
-          python_path="$("${uv_command[@]}" python find --managed-python --no-python-downloads 3.12)"
-          test -x "$python_path"
+          command -v docker >/dev/null
+          docker info --format '{{.ServerVersion}}'
           CI_VENV="$(mktemp -d "$RUNNER_TEMP/rzd-mcp.XXXXXXXX")"
           echo "CI_VENV=$CI_VENV" >> "$GITHUB_ENV"
-          "${uv_command[@]}" venv --no-python-downloads --seed --python "$python_path" "$CI_VENV"
+          python -m venv "$CI_VENV"
           "$CI_VENV/bin/python" - <<'PY'
           import sys
           assert sys.version_info[:2] == (3, 12), sys.version
           PY
-          if [[ ! -S "$XDG_RUNTIME_DIR/bus" ]]; then
-            echo 'DBUS_SESSION_BUS_ADDRESS=' >> "$GITHUB_ENV"
-          fi
       - name: Install MCP test client
         run: |
           set -euo pipefail
@@ -207,20 +187,20 @@ jobs:
           set -euo pipefail
           image="localhost/rzd-api-ci:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           echo "CI_IMAGE=$image" >> "$GITHUB_ENV"
-          aa-exec -p podman -- podman --cgroup-manager=cgroupfs build --memory=512m -t "$image" .
+          docker build -t "$image" .
       - name: Start container on loopback
         run: |
           set -euo pipefail
           container="rzd-api-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           echo "CI_CONTAINER=$container" >> "$GITHUB_ENV"
-          aa-exec -p podman -- podman --cgroup-manager=cgroupfs run -d \
-            --name "$container" --network=slirp4netns \
+          docker run -d \
+            --name "$container" --network=bridge \
             --memory=384m --memory-swap=512m --pids-limit=64 \
             --cap-drop=all --security-opt=no-new-privileges \
             -p 127.0.0.1::8000 \
             -e MCP_AUTH_TOKEN=ci-token-00000000000000000000000000000000 \
             "$CI_IMAGE"
-          address="$(aa-exec -p podman -- podman --cgroup-manager=cgroupfs port "$container" 8000/tcp)"
+          address="$(docker port "$container" 8000/tcp)"
           [[ "$address" =~ ^127\.0\.0\.1:[0-9]+$ ]]
           echo "CI_MCP_ADDRESS=$address" >> "$GITHUB_ENV"
       - name: Wait for healthcheck
@@ -232,7 +212,7 @@ jobs:
             fi
             sleep 1
           done
-          aa-exec -p podman -- podman --cgroup-manager=cgroupfs inspect --format '{{.State.Status}}' "$CI_CONTAINER"
+          docker inspect --format '{{.State.Status}}' "$CI_CONTAINER"
           exit 1
       - name: MCP initialize and list tools
         env:
@@ -246,13 +226,13 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -n "${CI_CONTAINER:-}" && "$CI_CONTAINER" == "rzd-api-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" ]]; then
-            if aa-exec -p podman -- podman --cgroup-manager=cgroupfs container exists "$CI_CONTAINER"; then
-              aa-exec -p podman -- podman --cgroup-manager=cgroupfs rm -f "$CI_CONTAINER"
+            if docker container inspect "$CI_CONTAINER" >/dev/null 2>&1; then
+              docker rm -f "$CI_CONTAINER"
             fi
           fi
           if [[ -n "${CI_IMAGE:-}" && "$CI_IMAGE" == "localhost/rzd-api-ci:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" ]]; then
-            if aa-exec -p podman -- podman --cgroup-manager=cgroupfs image exists "$CI_IMAGE"; then
-              aa-exec -p podman -- podman --cgroup-manager=cgroupfs rmi "$CI_IMAGE"
+            if docker image inspect "$CI_IMAGE" >/dev/null 2>&1; then
+              docker rmi "$CI_IMAGE"
             fi
           fi
           if [[ -n "${CI_VENV:-}" && "$CI_VENV" == "$RUNNER_TEMP"/rzd-mcp.* && -d "$CI_VENV" ]]; then
