@@ -27,7 +27,7 @@ jobs:
        github.actor == 'excuzivedeveloper' &&
        (github.ref == 'refs/heads/master' ||
         github.ref == 'refs/heads/wayfound-integration' ||
-        github.ref == 'refs/heads/ci/rzd-codence-dedicated-runner'))
+        github.ref == 'refs/heads/ci/rzd-github-hosted-migration-20261021'))
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     strategy:
@@ -115,7 +115,7 @@ jobs:
        github.actor == 'excuzivedeveloper' &&
        (github.ref == 'refs/heads/master' ||
         github.ref == 'refs/heads/wayfound-integration' ||
-        github.ref == 'refs/heads/ci/rzd-codence-dedicated-runner'))
+        github.ref == 'refs/heads/ci/rzd-github-hosted-migration-20261021'))
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
@@ -151,7 +151,7 @@ jobs:
        github.actor == 'excuzivedeveloper' &&
        (github.ref == 'refs/heads/master' ||
         github.ref == 'refs/heads/wayfound-integration' ||
-        github.ref == 'refs/heads/ci/rzd-codence-dedicated-runner'))
+        github.ref == 'refs/heads/ci/rzd-github-hosted-migration-20261021'))
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     defaults:

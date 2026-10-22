@@ -48,7 +48,7 @@ authenticate, or use passenger personal data.
 - Do not set `RZD_CA_BUNDLE` to a secret-bearing file.
 - Do not run repeated live smoke loops.
 
-## Proposed GitHub-hosted CI — not yet run (2026-10-21)
+## Proposed GitHub-hosted CI — not yet run (2026-10-22)
 
 The migration branch proposes standard `ubuntu-24.04` GitHub-hosted VMs for
 all three CI jobs. It is based on accepted combined PR #4 head
@@ -93,20 +93,25 @@ Docker inspect/rm/rmi only for guarded job-owned names, plus its own venv.
 No global prune, Codence/NLServer Docker access or service operation is allowed.
 
 Checkout remains pinned with `persist-credentials: false`; token permissions
-remain `contents: read`. Existing events and repo/actor/ref guards are unchanged,
-including owner-only manual dispatch on the previously approved PR #4 ref.
-The isolated migration branch is intentionally not added to the dispatch list.
-A push to it matches no CI push branch filter; no extra PR or dispatch is made.
-Other repository workflows keep their existing schedule/manual/release triggers.
-The owner-reported execution policy allows push/manual events only; its current
-effective enforcement is **UNVERIFIED**, and automatic PR CI is not claimed.
-Before any future run, the Owner/Orchestrator must independently verify in
-repository/organization Actions settings that the reviewed workflow, immutable
-actions, event, actor and ref are admitted by the intended policy. If automatic
-PR checks are required, the Owner must separately decide policy treatment of
-`pull_request`; Coder does not broaden settings or workflow allowlists.
-Startup-failure classification remains **UNKNOWN**; an empty check list or
-startup-failure record alone does not diagnose its cause.
+remain `contents: read`. The `push` and `pull_request` triggers and exact
+repository/actor guards remain unchanged. In all three jobs, the owner-only
+`workflow_dispatch` allowance now names the reviewed migration branch
+`ci/rzd-github-hosted-migration-20261021` in place of the retired Codence branch.
+A push to this branch matches no CI push branch filter. This change does not
+launch a workflow or authorize dispatch. Other repository workflows retain
+their existing schedule/manual/release triggers.
+Owner-provided GitHub policy screenshots confirm active `RZD CI Trusted
+Execution` enforcement for all workflows: only actor `excuzivedeveloper` and
+events `push` and `workflow_dispatch` are allowed. `pull_request` is excluded.
+The observed PR #6 `pull_request` run [#39777759439](https://github.com/excuzivedeveloper/rzd-api/actions/runs/39777759439)
+ended with `startup_failure` and zero jobs. The event restriction is sufficient
+to explain its rejection; no deeper platform annotation was available. No
+pytest, Ruff, Mypy, Gitleaks or Docker/MCP job executed, so **FULL_CI_PASS=NO**.
+After independent review and separate OWNER authorization, GitHub-hosted CI
+validation should use an owner-initiated manual run on this migration branch.
+Before dispatch, verify the trusted actor, branch ref and exact reviewed HEAD;
+afterwards require every expected job to succeed at that same HEAD. Coder does
+not change GitHub settings or dispatch the workflow in this task.
 
 Standard hosted runner minutes for this **public rzd-api repository** are free;
 artifact/cache storage and other billing limits still apply. This does not
