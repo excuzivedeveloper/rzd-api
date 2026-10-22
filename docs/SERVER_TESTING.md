@@ -119,10 +119,13 @@ claim free hosted execution for private WayFound. See GitHub's
 [runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
 and [Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions).
 
-Independent delta review, Orchestrator-coordinated PR #4 integration and any
-minimum affected history-map refresh must precede a separately owner-approved
-exact-head CI run. The parallel six-branch private history rehearsal and
-WayFound dependency pin remain separate workflows. No history sandbox,
+After independent review and separate OWNER authorization, one diagnostic
+exact-HEAD `workflow_dispatch` on `ci/rzd-github-hosted-migration-20261021`
+may run before PR #4/#5 integration. Before merge or integration, reconcile
+the overlapping PR #4/#5 changes, refresh the minimum affected history map,
+and preserve independent security/history findings, including fail-on-findings
+full-history Gitleaks. The parallel six-branch private history rehearsal and
+WayFound dependency pin remain separately gated. No history sandbox,
 production deployment, NLServer state or live-provider validation is changed
 or newly verified here.
 
