@@ -48,7 +48,7 @@ authenticate, or use passenger personal data.
 - Do not set `RZD_CA_BUNDLE` to a secret-bearing file.
 - Do not run repeated live smoke loops.
 
-## Proposed GitHub-hosted CI — not yet run (2026-10-22)
+## Proposed GitHub-hosted CI — observed manual run (2026-10-23)
 
 The migration branch proposes standard `ubuntu-24.04` GitHub-hosted VMs for
 all three CI jobs. It is based on accepted combined PR #4 head
@@ -73,10 +73,14 @@ from its upstream Linux x64 release. Before extraction/execution it checks the
 archive against the fixed SHA-256
 `551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb`
 (published upstream checksum/release-asset digest). The scan retains
-`git --redact --no-banner --exit-code=1 --log-opts='--all' .`, without ignores,
-HEAD-only narrowing or allow-fail. Reachable historical findings remain a
-blocking gate; credential authenticity/revocation is **UNKNOWN** and
-GitHub-managed PR refs/caches are a separate exposure question.
+`git --redact --no-banner --exit-code=1 --log-opts='--all' .`, with no
+HEAD-only narrowing or allow-fail. The repository-root `.gitleaksignore`
+contains only the 42 full fingerprints (commit, fixture path, rule and line)
+for the independently reviewed historical transfer-response identifiers.
+All other findings still fail the job. This scoped exception does not remove
+the old values from Git history or establish that opaque route identifiers
+could never have capability semantics; GitHub-managed PR refs/caches remain a
+separate exposure question.
 
 The `docker` job uses stock Docker Engine on the fresh GitHub VM: actual
 Dockerfile build, bridge networking, ephemeral host port on **127.0.0.1 only**,
@@ -105,13 +109,17 @@ Execution` enforcement for all workflows: only actor `excuzivedeveloper` and
 events `push` and `workflow_dispatch` are allowed. `pull_request` is excluded.
 The observed PR #6 `pull_request` run [#39777759439](https://github.com/excuzivedeveloper/rzd-api/actions/runs/39777759439)
 ended with `startup_failure` and zero jobs. The event restriction is sufficient
-to explain its rejection; no deeper platform annotation was available. No
-pytest, Ruff, Mypy, Gitleaks or Docker/MCP job executed, so **FULL_CI_PASS=NO**.
-After independent review and separate OWNER authorization, GitHub-hosted CI
-validation should use an owner-initiated manual run on this migration branch.
-Before dispatch, verify the trusted actor, branch ref and exact reviewed HEAD;
-afterwards require every expected job to succeed at that same HEAD. Coder does
-not change GitHub settings or dispatch the workflow in this task.
+to explain its rejection; no deeper platform annotation was available. An
+OWNER-authorized manual `workflow_dispatch`
+[#39803799244](https://github.com/excuzivedeveloper/rzd-api/actions/runs/39803799244)
+at `e255175048340d8ccc5e8abd3aef15dfb7ff84b1` did start all seven jobs:
+Python 3.10–3.14 and Docker/MCP passed (six jobs), while full-history Gitleaks
+failed on 42 findings in the historical transfer fixture (one job). Thus
+**FULL_CI_PASS=NO** at that HEAD. A future automatic internal-PR CI run requires
+a separate OWNER-approved Actions event-policy change to permit `pull_request`
+while preserving trusted-actor restrictions. This document does not authorize
+that settings change or another dispatch. Any later validation must match the
+exact reviewed branch HEAD and pass all required jobs.
 
 Standard hosted runner minutes for this **public rzd-api repository** are free;
 artifact/cache storage and other billing limits still apply. This does not
@@ -119,9 +127,9 @@ claim free hosted execution for private WayFound. See GitHub's
 [runner reference](https://docs.github.com/en/actions/reference/runners/github-hosted-runners)
 and [Actions billing](https://docs.github.com/en/billing/concepts/product-billing/github-actions).
 
-After independent review and separate OWNER authorization, one diagnostic
-exact-HEAD `workflow_dispatch` on `ci/rzd-github-hosted-migration-20261021`
-may run before PR #4/#5 integration. Before merge or integration, reconcile
+Any further diagnostic exact-HEAD `workflow_dispatch` on
+`ci/rzd-github-hosted-migration-20261021` requires independent review and
+separate OWNER authorization. Before merge or integration, reconcile
 the overlapping PR #4/#5 changes, refresh the minimum affected history map,
 and preserve independent security/history findings, including fail-on-findings
 full-history Gitleaks. The parallel six-branch private history rehearsal and
