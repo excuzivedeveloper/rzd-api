@@ -48,7 +48,7 @@ authenticate, or use passenger personal data.
 - Do not set `RZD_CA_BUNDLE` to a secret-bearing file.
 - Do not run repeated live smoke loops.
 
-## Proposed GitHub-hosted CI — observed manual run (2026-10-23)
+## Proposed GitHub-hosted CI — observed manual runs (2026-10-23)
 
 The migration branch proposes standard `ubuntu-24.04` GitHub-hosted VMs for
 all three CI jobs. It is based on accepted combined PR #4 head
@@ -115,11 +115,16 @@ OWNER-authorized manual `workflow_dispatch`
 at `e255175048340d8ccc5e8abd3aef15dfb7ff84b1` did start all seven jobs:
 Python 3.10–3.14 and Docker/MCP passed (six jobs), while full-history Gitleaks
 failed on 42 findings in the historical transfer fixture (one job). Thus
-**FULL_CI_PASS=NO** at that HEAD. A future automatic internal-PR CI run requires
-a separate OWNER-approved Actions event-policy change to permit `pull_request`
-while preserving trusted-actor restrictions. This document does not authorize
-that settings change or another dispatch. Any later validation must match the
-exact reviewed branch HEAD and pass all required jobs.
+**FULL_CI_PASS=NO** at that old HEAD. A later OWNER-authorized manual
+`workflow_dispatch` [#39948867953](https://github.com/excuzivedeveloper/rzd-api/actions/runs/39948867953)
+at `b6e4a15a9524e9ab23bc047a3e3a9efbebc51e57` completed **7/7 PASS**,
+including the full-history Gitleaks job. That success applies only to the
+pre-LANG_SITE-integration HEAD; the corrected HEAD still needs its own
+separately authorized CI validation. A future automatic internal-PR CI run
+requires a separate OWNER-approved Actions event-policy change to permit
+`pull_request` while preserving trusted-actor restrictions. This document does
+not authorize that settings change or another dispatch. Any later validation
+must match the exact reviewed branch HEAD and pass all required jobs.
 
 Standard hosted runner minutes for this **public rzd-api repository** are free;
 artifact/cache storage and other billing limits still apply. This does not
