@@ -238,61 +238,64 @@ def test_find_stations_dedupes_only_exact_enriched_station_identities() -> None:
     assert [station.node_id for station in stations] == ["node-1", "node-2"]
 
 
-def test_transfer_search_builds_contract_and_parses_reference_fixture() -> None:
+def test_transfer_search_builds_contract_and_parses_synthetic_fixture() -> None:
     api, transport = make_api(load_fixture("transfer-search.json"))
     result = api.search_transfers(
         TransferSearchRequest(
-            origin="5a323c29340c7441a0a556bb",
-            destination="5a13baf9340c745ca1e80436",
-            departure_date="2026-09-11",
+            origin="city-a",
+            destination="city-c",
+            departure_date="2099-02-01",
             providers=(TransferProvider.RAILS, TransferProvider.SUBURBAN),
         )
     )
 
-    assert result.request_id == "prod:6d:20260730173315:3423006"
+    assert result.request_id == "example"
     assert len(result.routes) == 2
     first = result.routes[0]
     assert len(first.legs) == 2
-    assert first.price == 5534.1
-    assert first.max_price == 18562.3
+    assert first.price == 207.5
+    assert first.max_price == 307.5
     assert first.incomplete is None
-    assert first.ttl_min_expire_time == "2026-07-30T18:21:42Z"
-    assert first.departure_time == "2026-09-11T01:00:00+03:00"
-    assert first.arrival_time == "2026-09-11T18:58:00+03:00"
-    assert first.origin and first.origin.city_name == "Москва"
-    assert first.destination and first.destination.name == "Исакогорка"
+    assert first.ttl_min_expire_time == "2099-01-31T20:00:00Z"
+    assert first.departure_time == "2099-02-01T08:00:00+03:00"
+    assert first.arrival_time == "2099-02-01T12:00:00+03:00"
+    assert first.origin and first.origin.city_name == "Synthetic City A"
+    assert first.destination and first.destination.name == "Synthetic Gamma"
     assert first.legs[0].provider_type == "b2brails"
     assert first.legs[0].incomplete is False
     assert first.legs[0].booking_system == "Express3"
     assert first.legs[0].transport_types == ["Train"]
-    assert first.legs[0].trips[0].number == "002Э"
+    assert first.legs[0].trips[0].number == "001S"
     assert first.legs[0].trips[0].transport_type == "Train"
-    assert first.legs[0].trips[0].price == 1976.4
-    assert first.legs[0].trips[0].distance_km == 280
-    assert first.legs[0].trips[0].train_pricing[0].number == "002Э"
+    assert first.legs[0].trips[0].price == 100.0
+    assert first.legs[0].trips[0].distance_km == 123
+    assert first.legs[0].trips[0].train_pricing[0].number == "001S"
     product = first.legs[0].trips[0].products[0]
-    assert product.price == 2682.9
-    assert product.free_places == 77
+    assert product.price == 120.25
+    assert product.free_places == 8
     assert product.product_type == "Compartment"
-    assert "2Э:ФПК" in product.service_classes
-    assert product.carriers == ["ФПК"]
-    assert product.ttl_expire_time == "2026-07-30T18:21:42Z"
+    assert product.service_classes == ["EX"]
+    assert product.carriers == ["Example"]
+    assert product.ttl_rule_key == "example"
+    assert product.ttl_expire_time == "2099-01-31T20:00:00Z"
     transfer = first.transfers[0]
-    assert transfer.origin and transfer.origin.name == "Ярославль (Московский вокзал)"
-    assert transfer.destination and transfer.destination.name == "Ярославль-Главный"
-    assert transfer.price == 500.0
-    assert transfer.duration_minutes == 13
-    assert transfer.duration_seconds == 807
+    assert transfer.origin and transfer.origin.name == "Synthetic Beta East"
+    assert transfer.destination and transfer.destination.name == "Synthetic Beta West"
+    assert transfer.price == 7.5
+    assert transfer.duration_minutes == 1
+    assert transfer.duration_seconds == 95
+    assert result.routes[1].transfers == []
+    assert result.routes[1].legs[1].provider_type == "cbdpr"
 
     call = transport.calls[0]
     assert call["method"] == "POST"
     assert call["url"].endswith("/apib2b/mmp/onewayRoutesStream/v2")
     assert "headers" not in call
     body = call["json_body"]
-    assert body["start_location"]["city"]["key"] == "5a323c29340c7441a0a556bb"
-    assert body["finish_location"]["city"]["key"] == "5a13baf9340c745ca1e80436"
-    assert body["start_datetime_range"]["from"] == "2026-09-11T00:00:00"
-    assert body["start_datetime_range"]["to"] == "2026-09-11T23:59:59"
+    assert body["start_location"]["city"]["key"] == "city-a"
+    assert body["finish_location"]["city"]["key"] == "city-c"
+    assert body["start_datetime_range"]["from"] == "2099-02-01T00:00:00"
+    assert body["start_datetime_range"]["to"] == "2099-02-01T23:59:59"
     assert body["min_trips_in_leg"] == 1
     assert body["max_trips_in_leg"] == 3
     assert body["max_results"] == 3
