@@ -115,6 +115,7 @@ def test_train_routes_builds_current_request_and_parses_models() -> None:
     call = transport.calls[0]
     assert call["method"] == "GET"
     assert call["url"].endswith("/railway-service/prices/train-pricing")
+    assert "headers" not in call
     assert call["params"]["adultPassengersQuantity"] == 2
     assert call["params"]["childrenPassengersQuantity"] == 1
 
@@ -290,7 +291,7 @@ def test_transfer_search_builds_contract_and_parses_synthetic_fixture() -> None:
     call = transport.calls[0]
     assert call["method"] == "POST"
     assert call["url"].endswith("/apib2b/mmp/onewayRoutesStream/v2")
-    assert "headers" not in call
+    assert call["headers"] == {"Cookie": "LANG_SITE=ru"}
     body = call["json_body"]
     assert body["start_location"]["city"]["key"] == "city-a"
     assert body["finish_location"]["city"]["key"] == "city-c"
@@ -303,12 +304,15 @@ def test_transfer_search_builds_contract_and_parses_synthetic_fixture() -> None:
     assert body["filters"][0]["exact_filter"]["param_values"] == ["b2brails", "cbdpr"]
 
 
-def test_transfer_search_non_default_language_does_not_add_cookie() -> None:
-    api, transport = make_configured_api(Config(language="en"), {})
+def test_transfer_search_cookie_is_scoped_to_mmp_and_respects_language() -> None:
+    api, transport = make_configured_api(Config(language="en"), {}, [])
 
     api.search_transfers(TransferSearchRequest("a", "b", "2099-01-01"))
+    api.find_stations(query="Москва", transport_type="rail", group_results=True)
 
-    assert "headers" not in transport.calls[0]
+    assert transport.calls[0]["headers"] == {"Cookie": "LANG_SITE=en"}
+    assert transport.calls[1]["method"] == "GET"
+    assert "headers" not in transport.calls[1]
 
 
 def test_transfer_search_uses_custom_b2b_host_for_mmp_endpoint() -> None:

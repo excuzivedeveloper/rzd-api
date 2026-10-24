@@ -196,6 +196,7 @@ class RzdApi:
             "POST",
             f"{self.mmp_base_url}/onewayRoutesStream/v2",
             json_body=self._transfer_request_body(request),
+            headers={"Cookie": f"LANG_SITE={self.config.language}"},
         )
         return self._parse_transfer_result(payload)
 
