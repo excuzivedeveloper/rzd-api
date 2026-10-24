@@ -119,6 +119,12 @@ library usage.
 | `get_car_images(...)` | `CarImagesResult` |
 | `get_route_stations(...)` | `RouteStationsResult` |
 
+MMP `search_transfers()` sends the per-request `Cookie: LANG_SITE=<language>`
+header (`ru` or `en`) **only** for its transfer POST. Station suggestions and
+ordinary single-train searches do not receive this Cookie. This offline
+contract does not establish live MMP availability or solve the previously
+observed 45-second timeout with the Cookie.
+
 `get_carriages()` использует актуальный `CarPricing` и сразу возвращает все вагоны
 поезда. `car_number` этому методу больше не передаётся. Значения `number`,
 `car_sub_type`, `service_class`, `carrier` и `numeration` из выбранного `Carriage`
