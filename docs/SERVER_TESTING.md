@@ -24,6 +24,36 @@ Expected properties:
 - `InsecureRequestWarning` is not globally suppressed;
 - unit tests run without live RZD network access and without MCP tests.
 
+## Offline MMP stage trace prototype
+
+`scripts/mmp_stage_trace.py` is an opt-in diagnostic adapter for a **separate,
+one-shot process**. It sends no request by itself and is never installed by
+`RzdTransport` or the MCP server. Validate it only with local HTTPS origin and
+HTTP CONNECT proxy fixtures:
+
+```sh
+python -m pytest -q tests/test_mmp_stage_trace.py
+```
+
+The trace contains allowlisted stage states and coarse monotonic time buckets:
+effective proxy source (`explicit`, `environment` or `unknown`), TCP connect,
+proxy CONNECT, target TLS, request write, first response headers, final status
+class and failure family. It does not retain or print URLs, proxy addresses,
+headers, cookies, route identifiers, bodies, exception text or trace IDs. The
+adapter preserves the existing Requests request and retry configuration; a
+future separately authorized live run must explicitly set `retry_total=0` and
+disable redirects to bound wire attempts. The helper refuses any Requests /
+urllib3 pair other than the locally validated 2.34.2 / 2.8.0. It uses
+per-adapter urllib3 connection-pool subclassing and therefore needs independent
+HIGH-risk review before a live experiment.
+
+With an HTTPS CONNECT tunnel, `proxy_connect=done` and `target_tls=done` still
+cannot distinguish a proxy relay stall from an RZD endpoint stall after request
+write. A timeout is a client observation, not proof that the upstream received
+or processed the POST. A pooled connection or redirect produces multiple stage
+events; the intended use is a fresh session and a single, no-retry call. No
+production or provider test is authorized by this document.
+
 ## Optional Live Smoke
 
 Run live smoke only once, manually, after the offline checks pass:
