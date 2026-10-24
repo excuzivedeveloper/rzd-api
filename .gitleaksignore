@@ -1,0 +1,46 @@
+# Exact Gitleaks 8.30.1 fingerprints for 42 reviewed legacy fixture findings only.
+# Value-silent attribution: https://github.com/excuzivedeveloper/WayFound/pull/176#issuecomment-6361608517
+# Independent residual-risk disposition: https://github.com/excuzivedeveloper/WayFound/pull/176#issuecomment-6363187218
+# Keep full-history scanning and fail on every other finding.
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:20
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:43
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:50
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:66
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:88
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:100
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:124
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:267
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:285
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:311
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:318
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:334
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:359
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:371
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:376
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:395
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:537
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:547
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:559
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:589
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:596
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:609
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:616
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:656
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:679
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:686
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:702
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:724
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:736
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:760
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:903
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:921
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:940
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:947
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:963
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:981
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:993
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:998
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:1017
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:1152
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:1162
+761ae9c8f7225cc5fdaa4d0f7bd22135c825cb4d:tests/fixtures/transfer-search.json:generic-api-key:1174

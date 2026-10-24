@@ -2,88 +2,239 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [master, wayfound-integration]
   pull_request:
+    branches: [master, wayfound-integration]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# Workflow guards are defense in depth; repository Actions policies still apply.
+# Jobs use fresh standard GitHub-hosted VMs, read-only tokens and no provider secrets.
+# No self-managed runner activation or workflow dispatch is authorized by this change.
+
 jobs:
   quality:
     name: Python ${{ matrix.python-version }}
-    runs-on: ubuntu-latest
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name == 'push' &&
+       (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/wayfound-integration')) ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.repository == 'excuzivedeveloper/rzd-api' &&
+       github.actor == 'excuzivedeveloper' &&
+       (github.ref == 'refs/heads/master' ||
+        github.ref == 'refs/heads/wayfound-integration' ||
+        github.ref == 'refs/heads/ci/rzd-github-hosted-migration-20261021'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ['3.10', '3.11', '3.12', '3.13', '3.14']
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
+      - name: Select Python and isolated venv
+        env:
+          REQUESTED_PYTHON: ${{ matrix.python-version }}
+        run: |
+          set -euo pipefail
+          CI_VENV="$(mktemp -d "$RUNNER_TEMP/rzd-quality.XXXXXXXX")"
+          echo "CI_VENV=$CI_VENV" >> "$GITHUB_ENV"
+          python -m venv "$CI_VENV"
+          "$CI_VENV/bin/python" - "$REQUESTED_PYTHON" <<'PY'
+          import sys
+          expected = tuple(map(int, sys.argv[1].split('.')))
+          assert sys.version_info[:2] == expected, (sys.version, expected)
+          print(f'Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')
+          PY
       - name: Install project
-        run: python -m pip install --upgrade pip && python -m pip install -e ".[dev]"
+        run: |
+          set -euo pipefail
+          "$CI_VENV/bin/python" -m pip install --upgrade pip
+          "$CI_VENV/bin/python" -m pip install -e '.[dev]'
       - name: Unit tests and coverage
-        run: python -m pytest tests/ -m "not integration" --cov --cov-report=term-missing
+        run: |
+          set -euo pipefail
+          "$CI_VENV/bin/python" -m pytest tests/ -m 'not integration' --cov --cov-report=term-missing
       - name: Ruff
-        if: matrix.python-version == '3.12'
-        run: ruff check . && ruff format --check .
+        if: ${{ !cancelled() && matrix.python-version == '3.12' }}
+        run: |
+          set -euo pipefail
+          result=0
+          "$CI_VENV/bin/ruff" check . || result=1
+          "$CI_VENV/bin/ruff" format --check . || result=1
+          exit "$result"
       - name: Mypy
-        if: matrix.python-version == '3.12'
-        run: mypy
+        if: ${{ !cancelled() && matrix.python-version == '3.12' }}
+        run: |
+          set -euo pipefail
+          "$CI_VENV/bin/mypy"
       - name: Build and metadata
-        if: matrix.python-version == '3.12'
-        run: python -m build && twine check dist/*
+        if: ${{ !cancelled() && matrix.python-version == '3.12' }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$CI_VENV/source" "$CI_VENV/dist"
+          git archive HEAD | tar -x -C "$CI_VENV/source"
+          (cd "$CI_VENV/source" && "$CI_VENV/bin/python" -m build --outdir "$CI_VENV/dist")
+          "$CI_VENV/bin/twine" check "$CI_VENV"/dist/*
       - name: Dependency audit
-        if: matrix.python-version == '3.12'
-        run: pip-audit
+        if: ${{ !cancelled() && matrix.python-version == '3.12' }}
+        run: |
+          set -euo pipefail
+          "$CI_VENV/bin/pip-audit"
+      - name: Remove this job's venv
+        if: always()
+        run: |
+          set -euo pipefail
+          if [[ -n "${CI_VENV:-}" && "$CI_VENV" == "$RUNNER_TEMP"/rzd-quality.* && -d "$CI_VENV" ]]; then
+            rm -rf -- "$CI_VENV"
+          fi
 
   secrets:
     name: Secret scan
-    runs-on: ubuntu-latest
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name == 'push' &&
+       (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/wayfound-integration')) ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.repository == 'excuzivedeveloper/rzd-api' &&
+       github.actor == 'excuzivedeveloper' &&
+       (github.ref == 'refs/heads/master' ||
+        github.ref == 'refs/heads/wayfound-integration' ||
+        github.ref == 'refs/heads/ci/rzd-github-hosted-migration-20261021'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          persist-credentials: false
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Full-history Gitleaks
+        run: |
+          set -euo pipefail
+          GITLEAKS_DIR="$(mktemp -d "$RUNNER_TEMP/rzd-gitleaks.XXXXXXXX")"
+          trap 'rm -rf -- "$GITLEAKS_DIR"' EXIT
+          curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
+            --output "$GITLEAKS_DIR/gitleaks.tar.gz" \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          (cd "$GITLEAKS_DIR" && echo '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tar.gz' | sha256sum --check --strict -)
+          tar -xzf "$GITLEAKS_DIR/gitleaks.tar.gz" -C "$GITLEAKS_DIR" gitleaks
+          "$GITLEAKS_DIR/gitleaks" version
+          "$GITLEAKS_DIR/gitleaks" git --redact --no-banner --exit-code=1 --log-opts='--all' .
 
   docker:
     name: Docker and MCP protocol
-    runs-on: ubuntu-latest
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name == 'push' &&
+       (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/wayfound-integration')) ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.repository == 'excuzivedeveloper/rzd-api' &&
+       github.actor == 'excuzivedeveloper' &&
+       (github.ref == 'refs/heads/master' ||
+        github.ref == 'refs/heads/wayfound-integration' ||
+        github.ref == 'refs/heads/ci/rzd-github-hosted-migration-20261021'))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.12"
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Check Docker and isolated client environment
+        run: |
+          set -euo pipefail
+          command -v docker >/dev/null
+          docker info --format '{{.ServerVersion}}'
+          CI_VENV="$(mktemp -d "$RUNNER_TEMP/rzd-mcp.XXXXXXXX")"
+          echo "CI_VENV=$CI_VENV" >> "$GITHUB_ENV"
+          python -m venv "$CI_VENV"
+          "$CI_VENV/bin/python" - <<'PY'
+          import sys
+          assert sys.version_info[:2] == (3, 12), sys.version
+          PY
       - name: Install MCP test client
-        run: python -m pip install -e ".[dev]"
+        run: |
+          set -euo pipefail
+          "$CI_VENV/bin/python" -m pip install --upgrade pip
+          "$CI_VENV/bin/python" -m pip install -e '.[dev]'
       - name: Build image
-        run: docker build -t rzd-api:ci .
-      - name: Start container
-        run: >-
-          docker run -d --name rzd-api-ci -p 127.0.0.1:18000:8000
-          -e MCP_AUTH_TOKEN=ci-token-00000000000000000000000000000000
-          rzd-api:ci
+        run: |
+          set -euo pipefail
+          image="localhost/rzd-api-ci:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "CI_IMAGE=$image" >> "$GITHUB_ENV"
+          docker build -t "$image" .
+      - name: Start container on loopback
+        run: |
+          set -euo pipefail
+          container="rzd-api-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "CI_CONTAINER=$container" >> "$GITHUB_ENV"
+          docker run -d \
+            --name "$container" --network=bridge \
+            --memory=384m --memory-swap=512m --pids-limit=64 \
+            --cap-drop=all --security-opt=no-new-privileges \
+            -p 127.0.0.1::8000 \
+            -e MCP_AUTH_TOKEN=ci-token-00000000000000000000000000000000 \
+            "$CI_IMAGE"
+          address="$(docker port "$container" 8000/tcp)"
+          [[ "$address" =~ ^127\.0\.0\.1:[0-9]+$ ]]
+          echo "CI_MCP_ADDRESS=$address" >> "$GITHUB_ENV"
       - name: Wait for healthcheck
         run: |
+          set -euo pipefail
           for attempt in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:18000/health; then exit 0; fi
+            if curl --fail --silent --max-time 3 "http://$CI_MCP_ADDRESS/health" >/dev/null; then
+              exit 0
+            fi
             sleep 1
           done
-          docker logs rzd-api-ci
+          docker inspect --format '{{.State.Status}}' "$CI_CONTAINER"
           exit 1
       - name: MCP initialize and list tools
         env:
-          MCP_TEST_URL: http://127.0.0.1:18000/mcp
           MCP_AUTH_TOKEN: ci-token-00000000000000000000000000000000
-        run: python -m pytest tests/integration/test_mcp_container.py -m integration -v
-      - name: Container logs
+        run: |
+          set -euo pipefail
+          MCP_TEST_URL="http://$CI_MCP_ADDRESS/mcp" \
+            "$CI_VENV/bin/python" -m pytest tests/integration/test_mcp_container.py -m integration -v
+      - name: Remove only this job's container, image and venv
         if: always()
-        run: docker logs rzd-api-ci || true
-      - name: Stop container
-        if: always()
-        run: docker stop rzd-api-ci || true
+        run: |
+          set -euo pipefail
+          if [[ -n "${CI_CONTAINER:-}" && "$CI_CONTAINER" == "rzd-api-ci-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" ]]; then
+            if docker container inspect "$CI_CONTAINER" >/dev/null 2>&1; then
+              docker rm -f "$CI_CONTAINER"
+            fi
+          fi
+          if [[ -n "${CI_IMAGE:-}" && "$CI_IMAGE" == "localhost/rzd-api-ci:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" ]]; then
+            if docker image inspect "$CI_IMAGE" >/dev/null 2>&1; then
+              docker rmi "$CI_IMAGE"
+            fi
+          fi
+          if [[ -n "${CI_VENV:-}" && "$CI_VENV" == "$RUNNER_TEMP"/rzd-mcp.* && -d "$CI_VENV" ]]; then
+            rm -rf -- "$CI_VENV"
+          fi
