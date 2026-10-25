@@ -541,7 +541,8 @@ def supervise(
         payload = json.loads(receive.recv_bytes(4096))
         check(type(payload) is dict and set(payload) == {"report", "handoff"}, "internal")
         result = validate_report(payload["report"])
-        check(result["GET_SENDS"] == _COUNTER.value, "internal")
+        if result["GET_SENDS"] != _COUNTER.value:
+            return report("UNKNOWN", "internal"), None
         if result["fixture_ready"]:
             validate_handoff(payload["handoff"])
         else:

@@ -198,7 +198,9 @@ an unconsumed successful handoff remains OWNER-controlled; never sweep files.
 OS stdout/stderr are discarded before dependency imports/preflight. Bounded
 private IPC is never forwarded to stdout. The only public output keys are
 `guard_verdict`, fixed-category `stop_reason`, `GET_SENDS=0..2|UNKNOWN`,
-`POST_SENDS=0`, `fixture_ready`. Unknown/mismatched counts stop the handoff.
+`POST_SENDS=0`, `fixture_ready`. A counter/report mismatch emits
+`GET_SENDS=UNKNOWN` and stops the handoff; contradictory counts are not reported
+as a verified zero. Unknown counts also stop the handoff.
 This reports client adapter entries, not provider receipts, and contains no
 traceback/path, ID, route/date, fixture digest/body, proxy or headers. Test with
 `python -m pytest tests/test_mmp_d14_resolver.py`; all sockets are synthetic

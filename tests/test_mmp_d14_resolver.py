@@ -416,7 +416,7 @@ def test_supervisor_deadline_and_unverifiable_count_stop():
     result, private = resolver.supervise({}, target=hanging_worker, seconds=3)
     assert result == resolver.report(1, "deadline") and private is None
     result, private = resolver.supervise({}, target=wrong_count_worker)
-    assert result == resolver.report(0, "internal") and private is None
+    assert result == resolver.report("UNKNOWN", "internal") and private is None
 
 
 @pytest.mark.parametrize("point", ["imports", "dup", "open", "preflight", "lookup"])
