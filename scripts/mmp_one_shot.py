@@ -8,15 +8,75 @@ Only a validated report is written to its saved output descriptor.
 
 from __future__ import annotations
 
+# The CLI must protect output BEFORE optional/dependency imports. E402 is
+# intentional: putting those imports first would expose import tracebacks.
+# ruff: noqa: E402
+# isort: off
+import os
+import sys
+
+_OUTPUT_FD: int | None = None
+_BOOT_COUNTER: Any = None
+_BOOT_PROCESS: Any = None
+_BOOT_STARTED: float | None = None
+_BOOT_STOP = (
+    b'{"proxy_source":"unknown","stage_states":{"tcp":"unknown",'
+    b'"proxy_connect":"unknown","target_tls":"unknown","request_write":"unknown",'
+    b'"first_headers":"unknown"},"stage_elapsed":{"tcp":"unknown",'
+    b'"proxy_connect":"unknown","target_tls":"unknown","request_write":"unknown",'
+    b'"first_headers":"unknown"},"status_family":"unknown","failure_family":"none",'
+    b'"guard_verdict":"STOP","attempt_count":COUNT,"redirect_count":0}\n'
+)
+
+
+def _bootstrap_stop(*_: object) -> None:
+    # No exception formatting, even when dependency imports or fd setup fail.
+    try:
+        if _BOOT_PROCESS is not None and _BOOT_PROCESS.is_alive():
+            _BOOT_PROCESS.kill()
+        count = b"1" if _BOOT_COUNTER is not None and _BOOT_COUNTER.value == 1 else b"0"
+        os.write(_OUTPUT_FD if _OUTPUT_FD is not None else 1, _BOOT_STOP.replace(b"COUNT", count))
+    except BaseException:
+        pass
+    os._exit(2)
+
+
+if __name__ == "__main__":
+    try:
+        _OUTPUT_FD = os.dup(1)
+        _null = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(_null, 1)
+        os.dup2(_null, 2)
+        os.close(_null)
+    except BaseException:
+        _bootstrap_stop()
+    sys.excepthook = _bootstrap_stop
+
+    # Linux is the supported server platform. This timer also bounds a hung
+    # dependency import before the spawned-worker supervisor even exists.
+    if sys.platform == "linux":
+        import signal
+        import time
+
+        class _OverallDeadline(BaseException):
+            pass
+
+        def _expire(*_: object) -> None:
+            raise _OverallDeadline
+
+        _BOOT_STARTED = time.monotonic()
+        signal.signal(signal.SIGALRM, _expire)
+        signal.setitimer(signal.ITIMER_REAL, 30.0)
+
+
+# isort: on
 import hashlib
 import http.client
 import json
 import logging
 import multiprocessing as mp
-import os
 import re
 import subprocess
-import sys
 import time
 from pathlib import Path
 from typing import Any, cast
@@ -189,7 +249,9 @@ def source_gate() -> None:
     require(Path(rzd_api.__file__).resolve().parent == root / "rzd_api")
 
 
-def run_once(data: Any, attempt_counter: Any = None) -> dict[str, Any]:
+def run_once(
+    data: Any, attempt_counter: Any = None, *, deadline_at: float | None = None
+) -> dict[str, Any]:
     """Worker core; call only through the supervisor for deadline/output safety."""
     trace = StageTrace()
     attempts = 0
@@ -211,6 +273,7 @@ def run_once(data: Any, attempt_counter: Any = None) -> dict[str, Any]:
 
         def guarded_send(request: requests.PreparedRequest, **kwargs: Any) -> requests.Response:
             nonlocal attempts
+            require(deadline_at is None or time.monotonic() < deadline_at)
             require(attempts == 0 and session is not None and session.send_count == 1)
             require(request.method == "POST" and request.url == ENDPOINT)
             retry = adapter.max_retries
@@ -274,12 +337,19 @@ def silence() -> None:
         os.close(null)
 
 
-def worker(data: Any, connection: Any, counter: Any) -> None:
+def worker(data: Any, connection: Any, counter: Any, deadline_at: float) -> None:
     silence()
     report = stopped(0)
     try:
+        require(time.monotonic() < deadline_at)
+        if sys.platform == "linux":
+            import signal
+
+            # Child-local hard expiry also covers an interrupted parent spawn.
+            signal.signal(signal.SIGALRM, lambda *_: os._exit(2))
+            signal.setitimer(signal.ITIMER_REAL, max(0.001, deadline_at - time.monotonic()))
         source_gate()
-        report = run_once(data, counter)
+        report = run_once(data, counter, deadline_at=deadline_at)
     except BaseException:
         report = stopped(counter.value)
     try:
@@ -290,11 +360,17 @@ def worker(data: Any, connection: Any, counter: Any) -> None:
 
 def supervise(data: Any, *, target: Any = worker, deadline: float = DEADLINE) -> dict[str, Any]:
     """Independent wall clock; worker cannot extend it with trickled body bytes."""
+    global _BOOT_COUNTER, _BOOT_PROCESS
     started = time.monotonic()
     context = mp.get_context("spawn")
     receive, send = context.Pipe(duplex=False)
     counter = context.Value("i", 0, lock=False)
-    process = context.Process(target=target, args=(data, send, counter), daemon=True)
+    if _BOOT_STARTED is not None:
+        deadline = min(deadline, max(0, DEADLINE - (started - _BOOT_STARTED)))
+    process = context.Process(
+        target=target, args=(data, send, counter, started + deadline), daemon=True
+    )
+    _BOOT_COUNTER, _BOOT_PROCESS = counter, process
     report = stopped(0)
     try:
         process.start()
@@ -319,11 +395,12 @@ def supervise(data: Any, *, target: Any = worker, deadline: float = DEADLINE) ->
 
 
 def main() -> int:
-    output = os.dup(1)
+    output = _OUTPUT_FD if _OUTPUT_FD is not None else os.dup(1)
     silence()
     report = stopped(0)
     try:
         require(len(sys.argv) == 1)
+        require(sys.platform == "linux")
         # Input must be a regular protected file; no unbounded pipe/terminal read.
         import stat
 
@@ -331,7 +408,11 @@ def main() -> int:
         data = json.loads(sys.stdin.read(16385))
         report = supervise(data)
     except BaseException:
-        pass
+        report = stopped(1 if _BOOT_COUNTER is not None and _BOOT_COUNTER.value == 1 else 0)
+    if sys.platform == "linux":
+        import signal
+
+        signal.setitimer(signal.ITIMER_REAL, 0)
     try:
         os.write(output, (json.dumps(validate_report(report), sort_keys=True) + "\n").encode())
     finally:

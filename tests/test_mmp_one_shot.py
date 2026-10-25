@@ -313,12 +313,12 @@ def test_cli_invalid_input_outputs_only_safe_report(tmp_path):
     assert json.loads(result.stdout) == probe.stopped(0)
 
 
-def hanging_worker(data, connection, counter):
+def hanging_worker(data, connection, counter, deadline_at):
     counter.value = 1
     time.sleep(10)
 
 
-def malformed_worker(data, connection, counter):
+def malformed_worker(data, connection, counter, deadline_at):
     connection.send_bytes(b'{"secret":"NEVER_PRINT"}')
 
 
@@ -379,7 +379,7 @@ out = os.dup(1)
 class Channel:
     def send_bytes(self, b): os.write(out, b)
     def close(self): pass
-def noisy(*args):
+def noisy(*args, **kwargs):
     print("SECRET_STDOUT", flush=True)
     os.write(2, b"SECRET_STDERR")
     logging.critical("SECRET_LOG")
@@ -387,9 +387,51 @@ def noisy(*args):
     return p.stopped(0)
 p.source_gate = lambda: None
 p.run_once = noisy
-p.worker({}, Channel(), SimpleNamespace(value=0))
+p.worker({}, Channel(), SimpleNamespace(value=0), p.time.monotonic() + 5)
 """.replace("FAIL", repr(fail))
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, timeout=10)
     assert result.returncode == 0 and result.stderr == b""
     assert json.loads(result.stdout) == probe.stopped(0)
     assert b"SECRET" not in result.stdout
+
+
+def test_expired_worker_budget_prevents_network(approved, monkeypatch):
+    monkeypatch.setattr(HTTPAdapter, "send", lambda *a, **k: pytest.fail("network"))
+    assert probe.run_once(approved, deadline_at=time.monotonic() - 1)["attempt_count"] == 0
+
+
+@pytest.mark.parametrize("failure", ["import", "dup", "open"])
+def test_cli_bootstrap_redacts_import_and_initialization_errors(failure):
+    code = """
+import os, runpy, sys
+from importlib.abc import MetaPathFinder
+class FailImport(MetaPathFinder):
+    def find_spec(self, fullname, path, target=None):
+        if fullname == "requests": raise ImportError("SECRET_IMPORT_PATH")
+def fail(*args): raise OSError("SECRET_FD_ERROR")
+if FAILURE == "import": sys.meta_path.insert(0, FailImport())
+if FAILURE == "dup": os.dup = fail
+if FAILURE == "open": os.open = fail
+runpy.run_module("scripts.mmp_one_shot", run_name="__main__")
+""".replace("FAILURE", repr(failure))
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, timeout=10)
+    assert result.returncode == 2 and result.stderr == b""
+    assert json.loads(result.stdout) == probe.stopped(0)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux CLI whole-process timer")
+def test_cli_deadline_also_covers_hung_dependency_import():
+    code = """
+import runpy, sys, time
+from importlib.abc import MetaPathFinder
+class HangImport(MetaPathFinder):
+    def find_spec(self, fullname, path, target=None):
+        if fullname == "requests": time.sleep(60)
+sys.meta_path.insert(0, HangImport())
+runpy.run_module("scripts.mmp_one_shot", run_name="__main__")
+"""
+    started = time.monotonic()
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, timeout=35)
+    assert 29 <= time.monotonic() - started < 34
+    assert result.returncode == 2 and result.stderr == b""
+    assert json.loads(result.stdout) == probe.stopped(0)

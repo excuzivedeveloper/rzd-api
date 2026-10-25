@@ -92,6 +92,11 @@ These flags attest completed OWNER-mediated preflight/budget/review; they do
 not independently establish approval. Do not generate a replacement fixture or
 set flags merely to bypass STOP. Missing approved input means HOLD.
 
+The Linux CLI redirects OS stdout/stderr before dependency imports and installs
+a safe fixed STOP fallback for import/bootstrap errors. An early independent
+30-second timer also covers a hung import; other CLI platforms refuse to run.
+The worker has its own absolute expiry and checks it again before adapter
+network entry, so delayed worker startup cannot send beyond the total budget.
 The supervisor redirects OS stdout/stderr to the null device before spawning,
 disables logging and HTTP debug, and kills the worker at the independent
 30-second deadline even if body bytes keep arriving. It accepts <=4 KiB of
