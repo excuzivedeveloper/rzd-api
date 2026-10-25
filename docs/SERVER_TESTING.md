@@ -116,6 +116,91 @@ live run still requires exact-final-HEAD independent HIGH-risk PASS, sufficient
 CI and the D12 preflight. This offline correction authorizes no live request,
 merge, deployment, restart or production change.
 
+## D14 GET resolver and private prospective handoff (offline correction)
+
+`scripts/mmp_d14_resolver.py` is a separate opt-in Linux CLI. It cannot send a
+POST and does not change `mmp_one_shot.py`, its POST-only guard/source gate, or
+the installed production client. The withdrawn ad-hoc G1 command must not be
+used. This code and the actual OWNER command still need independent HIGH-risk
+review at the new final HEAD before any D14 preparation/provider activity.
+
+The helper deliberately permits only **two GET adapter entries**, one exact
+`/api/v1/suggests` query for each D14 city, with stock `TransportType=rail`,
+`GroupResults=true`, `RailwaySortPriority=true`, `SynonymOn=1`, `Language=ru`.
+No aliases, second query per city, automatic retries or redirects exist. It
+forces `allow_redirects=False` when the normal transport omits the keyword and
+rejects an explicit conflicting value. Session.send and adapter.send each
+validate exact HTTPS scheme/netloc/path and all decoded query keys/values;
+duplicate/extra query keys, Authorization/netrc injection and Cookie are STOP.
+Both HTTP/HTTPS mounts use the same HTTPS-only adapter guard, preventing a
+post-validation scheme change from escaping through a stock HTTP adapter.
+
+The actual adapter rechecks explicit effective `select_proxy`, configured CA,
+zero retry total/connect/read/status, 5/12 s timeout, trust_env and ambient
+proxy/CA/key-log collisions. A 3xx, other HTTP error, timeout, invalid schema or
+ambiguous identity ends the operation: no second-city GET after an error and
+zero POST. Early bootstrap, parent and child deadlines bound the complete
+process to 30 seconds. This conservative 2-GET component fits within the
+OWNER's D14 ceiling of 6 GETs/1 POST; that ceiling does not authorize rerunning
+this block, repeated identical queries, extra aliases or a second POST. If
+verified nodes already exist, do not spend GETs merely because budget remains.
+
+Selection reuses the canonical WayFound deterministic selector from
+`d713b49e1e4c0cf922a0ac6eb8c8818037392252`, `direct_hub.py:3299`, with a stricter
+D14 check **before** any by-code or by-id collapse. Exactly one matching
+candidate object is required, including when identical objects share a code
+or node ID. The selected object must have city type/city backing, rail type,
+Russian country and the fixed expected region (Республика Хакасия or
+Новосибирская область). Missing, different or unrecognized metadata is HOLD,
+never a reason to guess an ID or weaken the selector. The stock parser is used
+before its normal API deduplication, preserving ambiguous objects. Only the
+verified selected object's `node_id or city_id` is used, never railway code or
+GeoNames ID. Provider metadata remains the authority for these opaque IDs;
+offline tests do not establish their live values.
+
+`RzdApi._transfer_request_body` builds the new prospective fixture, independently
+checked against D14's fixed route, 2026-11-08 date, 1..3 trips, 5 results,
+system parameters and b2brails/cbdpr providers. Its fresh canonical SHA256 is
+computed in-process. The historical B12B digest is neither read nor replaced.
+
+The proposed resolver invocation for later command review is
+`python -B -m scripts.mmp_d14_resolver < protected-input.json`, **not a command
+to execute during this offline correction**. Stdin must be an owner-controlled
+0600 single-link regular file <=16 KiB with exactly `config` (proxy, ca_bundle,
+user_agent, referer) and `handoff_path`. The target must be a new absolute path
+outside the source checkout in an existing owner-only 0700 task directory;
+no symlink, overwrite, runtime path or shared directory. The regular production
+CA bundle must be explicitly present. Exact dependency/source/clean-checkout
+and venv guards are retained. Required process-local attestations are
+`RZD_LIVE_TEST`, `RZD_MMP_PREFLIGHT_OK`, `RZD_MMP_BUDGET_OK`,
+`RZD_D14_RESOLVER_OK` all equal to 1, and `RZD_MMP_REVIEWED_SHA` equal to the
+independently reviewed new HEAD. Flags are attestations of completed S0 and
+approval, not a substitute for them; the helper does not read production env.
+
+Only after both GETs and validations succeed does the parent create the
+private handoff once with O_EXCL/O_NOFOLLOW, mode 0600, bounded size and fsync.
+It contains private selected-node evidence, config, exact fixture and its fresh
+digest; it must never be printed. Failed/partial publication removes the file.
+`consume_handoff(path)` verifies ownership/mode/single link, unlinks **before**
+parsing/use (including malformed/oversized failure paths), then rechecks
+selection, stock body, public contract and SHA and returns `(input, digest)`
+directly to a protected caller. It sends no request. A future independently
+reviewed OWNER driver must consume it this way, pass the validated body/digest
+without printing to the unchanged POST-only runner, preserve its clean-source
+guard and recheck proxy/CA/budget. No hand-copied IDs, recreated file or digest
+from terminal output. Such a driver/actual OWNER command is a separate review
+gate, not implicit permission to execute a POST now. Scratch lifecycle after
+an unconsumed successful handoff remains OWNER-controlled; never sweep files.
+
+OS stdout/stderr are discarded before dependency imports/preflight. Bounded
+private IPC is never forwarded to stdout. The only public output keys are
+`guard_verdict`, fixed-category `stop_reason`, `GET_SENDS=0..2|UNKNOWN`,
+`POST_SENDS=0`, `fixture_ready`. Unknown/mismatched counts stop the handoff.
+This reports client adapter entries, not provider receipts, and contains no
+traceback/path, ID, route/date, fixture digest/body, proxy or headers. Test with
+`python -m pytest tests/test_mmp_d14_resolver.py`; all sockets are synthetic
+localhost fixtures. Code/offline PASS is not live success or production recovery.
+
 ## Optional Live Smoke
 
 Run live smoke only once, manually, after the offline checks pass:
