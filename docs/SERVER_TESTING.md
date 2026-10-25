@@ -179,12 +179,15 @@ approval, not a substitute for them; the helper does not read production env.
 
 Only after both GETs and validations succeed does the parent create the
 private handoff once with O_EXCL/O_NOFOLLOW, mode 0600, bounded size and fsync.
-It contains private selected-node evidence, config, exact fixture and its fresh
-digest; it must never be printed. Failed/partial publication removes the file.
-`consume_handoff(path)` verifies ownership/mode/single link, unlinks **before**
-parsing/use (including malformed/oversized failure paths), then rechecks
+It has a fixed D14 protocol signature and contains private selected-node
+evidence, config, exact fixture and its fresh digest; it must never be printed.
+Failed/partial publication removes the file. `consume_handoff(path)` verifies
+ownership/mode/single link **and the D14 signature**, then unlinks **before**
+JSON parsing/use (including malformed/oversized D14 failure paths), then rechecks
 selection, stock body, public contract and SHA and returns `(input, digest)`
-directly to a protected caller. It sends no request. A future independently
+directly to a protected caller. It sends no request. An unknown/non-D14 file is
+left untouched and causes HOLD; owner/mode alone never authorize deleting an
+arbitrary file. A future independently
 reviewed OWNER driver must consume it this way, pass the validated body/digest
 without printing to the unchanged POST-only runner, preserve its clean-source
 guard and recheck proxy/CA/budget. No hand-copied IDs, recreated file or digest

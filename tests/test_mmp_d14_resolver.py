@@ -375,6 +375,10 @@ def test_private_handoff_consumed_once_and_removed_even_when_invalid(tmp_path, m
     path.chmod(0o600)
     with pytest.raises(resolver.Halt):
         resolver.consume_handoff(str(path))
+    assert path.exists()  # unknown task protocol; leave the file untouched
+    path.write_bytes(resolver._HANDOFF_MAGIC + b'{"SECRET":"invalid"}')
+    with pytest.raises(resolver.Halt):
+        resolver.consume_handoff(str(path))
     assert not path.exists()
 
 

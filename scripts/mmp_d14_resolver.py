@@ -85,6 +85,7 @@ ENDPOINT = "https://ticket.rzd.ru/api/v1/suggests"
 CITIES = ("Бискамжа", "Новосибирск")
 REGIONS = ("Республика Хакасия", "Новосибирская область")
 DATE = "2026-11-08"
+_HANDOFF_MAGIC = b"RZD-D14-PROSPECTIVE-V1\n"
 _REASONS = {
     "none",
     "preflight",
@@ -450,7 +451,7 @@ def destination(value: Any) -> Path:
 def publish(value: Any, handoff: dict[str, Any]) -> None:
     path = destination(value)
     validate_handoff(handoff)
-    encoded = json.dumps(handoff, separators=(",", ":")).encode()
+    encoded = _HANDOFF_MAGIC + json.dumps(handoff, separators=(",", ":")).encode()
     check(len(encoded) <= 16384, "handoff")
     created = False
     try:
@@ -483,7 +484,10 @@ def consume_handoff(value: str) -> tuple[dict[str, Any], str]:
         info = os.fstat(stream.fileno())
         check(stat.S_ISREG(info.st_mode) and stat.S_IMODE(info.st_mode) == 0o600, "handoff")
         check(info.st_uid == os.getuid() and info.st_nlink == 1, "handoff")
-        # Ownership proven: consume even malformed/oversized input on failure.
+        # Owner/mode alone do not identify a task artifact. Never unlink an
+        # unrelated protected file selected by an erroneous caller path.
+        check(stream.read(len(_HANDOFF_MAGIC)) == _HANDOFF_MAGIC, "handoff")
+        # Task protocol identified: consume malformed/oversized JSON on failure.
         path.unlink()
         check(info.st_size <= 16384, "handoff")
         encoded = stream.read(16385)
