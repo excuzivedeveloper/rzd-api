@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import ssl
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 import requests
@@ -105,7 +105,9 @@ class StageTrace:
         }
 
 
-def attach_stage_trace(transport: RzdTransport) -> StageTrace:
+def attach_stage_trace(
+    transport: RzdTransport, *, before_stage: Callable[[str], None] | None = None
+) -> StageTrace:
     """Replace only this transport's HTTPS adapter, preserving retry/pool settings.
 
     This relies on urllib3 connection-pool internals and deliberately refuses
@@ -126,6 +128,8 @@ def attach_stage_trace(transport: RzdTransport) -> StageTrace:
 
     class Connection(HTTPSConnection):
         def _new_conn(self) -> Any:
+            if before_stage is not None:
+                before_stage("tcp")
             try:
                 result = super()._new_conn()
             except Exception:
@@ -135,6 +139,8 @@ def attach_stage_trace(transport: RzdTransport) -> StageTrace:
             return result
 
         def _tunnel(self) -> None:
+            if before_stage is not None:
+                before_stage("proxy_connect")
             try:
                 super()._tunnel()
             except Exception:
@@ -158,6 +164,8 @@ def attach_stage_trace(transport: RzdTransport) -> StageTrace:
             trace._mark("target_tls", "done")
 
         def request(self, *args: Any, **kwargs: Any) -> None:
+            if before_stage is not None:
+                before_stage("request_write")
             try:
                 super().request(*args, **kwargs)
             except Exception:

@@ -54,6 +54,63 @@ or processed the POST. A pooled connection or redirect produces multiple stage
 events; the intended use is a fresh session and a single, no-retry call. No
 production or provider test is authorized by this document.
 
+### D12 one-shot enforcement (offline correction; live remains gated)
+
+`scripts/mmp_one_shot.py` adds a disposable supervisor/worker; normal library
+entrypoints never import it. Review and test with
+`python -m pytest tests/ -m 'not integration'`. Only tests substitute a localhost
+endpoint; the CLI has no endpoint/method/timeout override. It sends the approved
+body once through the unchanged `RzdTransport.request_json` serializer, with
+MMP-only `LANG_SITE=ru`, a fresh Session, verified CA, connect/read 5/12 seconds,
+and total/connect/read/status retries zero. Redirects are disabled at request
+and send boundaries; a 3xx is terminal STOP. Duplicate Session, adapter or
+low-level connection/write entries fail before a second network operation.
+
+The supported topology is an explicit **HTTP CONNECT proxy**, with its original
+credentials, and HTTPS target verification. Missing proxy, SOCKS/HTTPS proxy,
+ambient proxy discovery or proxy/CA environment settings cause zero-send STOP.
+`trust_env` remains enabled; environment is never repaired automatically.
+`SSLKEYLOGFILE` also causes STOP so TLS tracing cannot write a secret file.
+Prepared Authorization (including netrc injection) is rejected. No requests to
+station lookup or fallback endpoints are made.
+
+Future invocation is `python -B -m scripts.mmp_one_shot < protected-input.json`
+from the exact clean reviewed checkout and its isolated venv. **Do not run it
+now.** No fixture, proxy, credentials or CA path belongs on the command line or
+in shell tracing. The preexisting protected input must contain exactly
+`config` (keys `proxy`, `ca_bundle`, `user_agent`, `referer`; null uses stock
+defaults) and `fixture` (key `body`, the previously authorized nonpersonal B12B
+JSON object, reused verbatim). Stdin must be a regular file <=16 KiB. This
+document deliberately supplies no real fixture or live invocation block.
+
+All gates are required: exact Requests 2.34.2 / urllib3 2.8.0;
+`RZD_LIVE_TEST=1`, `RZD_MMP_PREFLIGHT_OK=1`, `RZD_MMP_BUDGET_OK=1`;
+`RZD_MMP_REVIEWED_SHA` equal to the independently approved 40-character HEAD;
+and `RZD_MMP_FIXTURE_SHA256` equal to the **previously approved** fixture digest
+(SHA256 of UTF-8 `json.dumps(fixture, sort_keys=True, separators=(',', ':'))`).
+These flags attest completed OWNER-mediated preflight/budget/review; they do
+not independently establish approval. Do not generate a replacement fixture or
+set flags merely to bypass STOP. Missing approved input means HOLD.
+
+The supervisor redirects OS stdout/stderr to the null device before spawning,
+disables logging and HTTP debug, and kills the worker at the independent
+30-second deadline even if body bytes keep arriving. It accepts <=4 KiB of
+validated IPC; malformed/absent output, nonzero exit and count mismatch are
+STOP. Only a validated fixed-category trace summary plus `guard_verdict`,
+`attempt_count=0|1`, and `redirect_count=0` reaches stdout. Timeout reports use
+unknown stages and the shared counter set immediately before adapter network
+entry. This counts client attempts, **not provider receipts**. PASS means the
+enforcement completed, not HTTP/application success or production recovery.
+Exceptions and cleanup errors never print their text. The harness writes no
+trace files and changes no production config, services or request defaults.
+
+`stage_elapsed` remains **cumulative since attachment**, not per-stage latency
+or the supervisor deadline. CONNECT/TLS/local write success cannot prove RZD
+handled the POST or separate proxy relay from origin failure. Any subsequent
+live run still requires exact-final-HEAD independent HIGH-risk PASS, sufficient
+CI and the D12 preflight. This offline correction authorizes no live request,
+merge, deployment, restart or production change.
+
 ## Optional Live Smoke
 
 Run live smoke only once, manually, after the offline checks pass:

@@ -28,6 +28,7 @@ from scripts.mmp_stage_trace import attach_stage_trace
 
 
 class Origin(BaseHTTPRequestHandler):
+    stall_delay = 0.3
     counts: ClassVar[Counter[str]] = Counter()
     seen: ClassVar[dict[str, tuple[str, bytes, dict[str, str]]]] = {}
 
@@ -45,7 +46,7 @@ class Origin(BaseHTTPRequestHandler):
         body_in = self.rfile.read(int(self.headers.get("Content-Length", "0")))
         type(self).seen[self.path] = (self.command, body_in, dict(self.headers))
         if self.path == "/header-stall":
-            time.sleep(0.3)
+            time.sleep(type(self).stall_delay)
         if self.path == "/redirect":
             self.send_response(302)
             self.send_header("Location", "/redirected")
@@ -61,7 +62,7 @@ class Origin(BaseHTTPRequestHandler):
             if self.path == "/body-stall":
                 self.wfile.write(response[:2])
                 self.wfile.flush()
-                time.sleep(0.3)
+                time.sleep(type(self).stall_delay)
                 self.wfile.write(response[2:])
             else:
                 self.wfile.write(response)
@@ -72,6 +73,7 @@ class Origin(BaseHTTPRequestHandler):
 class Proxy(BaseHTTPRequestHandler):
     connect_count = 0
     fail_connect = False
+    relay_timeout = 1
 
     def log_message(self, *_: Any) -> None:
         pass
@@ -90,7 +92,9 @@ class Proxy(BaseHTTPRequestHandler):
             self.connection.settimeout(1)
             upstream.settimeout(1)
             while True:
-                readable, _, _ = select.select([self.connection, upstream], [], [], 1)
+                readable, _, _ = select.select(
+                    [self.connection, upstream], [], [], type(self).relay_timeout
+                )
                 if not readable:
                     break
                 for channel in readable:
@@ -138,10 +142,12 @@ def _certificate(path: Path) -> tuple[Path, Path]:
 
 @pytest.fixture
 def loopback(tmp_path: Path):
+    Origin.stall_delay = 0.3
     Origin.counts = Counter()
     Origin.seen = {}
     Proxy.connect_count = 0
     Proxy.fail_connect = False
+    Proxy.relay_timeout = 1
     cert_path, key_path = _certificate(tmp_path)
     origin = ThreadingHTTPServer(("127.0.0.1", 0), Origin)
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
