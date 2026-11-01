@@ -544,6 +544,7 @@ class RzdApi:
         last_trip = next((leg.trips[-1] for leg in reversed(legs) if leg.trips), None)
         incomplete = cls._boolean_or_none(node, "incomplete")
         has_incomplete_leg = any(leg.incomplete is True for leg in legs)
+        price = cls._money(node, "min_price")
         return TransferRoute(
             legs=legs,
             transfers=transfers,
@@ -553,8 +554,8 @@ class RzdApi:
             ),
             departure_time=first_trip.departure_time if first_trip else None,
             arrival_time=last_trip.arrival_time if last_trip else None,
-            price=cls._money(node, "min_price"),
-            currency=cls._currency(node, "min_price"),
+            price=price,
+            currency=cls._mmp_aggregate_currency(node, price),
             max_price=cls._money(node, "max_price"),
             available_places=cls._integer(node, "free_places"),
             incomplete=True if has_incomplete_leg else incomplete,
@@ -564,6 +565,26 @@ class RzdApi:
             or cls._first_string([leg.ttl_max_expire_time for leg in legs]),
             raw=node,
         )
+
+    @staticmethod
+    def _mmp_aggregate_currency(node: JsonObject, price: float | None) -> str | None:
+        """OWNER contract: only MMP v2 aggregate positive integer kopecks imply RUB."""
+        money = node.get("min_price")
+        if not isinstance(money, dict):
+            return None
+        explicit = [money[key] for key in ("currency", "currency_code") if key in money]
+        if explicit:
+            if any(not isinstance(value, str) or not value.strip() for value in explicit):
+                return None
+            currencies = {value.strip().upper() for value in explicit}
+            return currencies.pop() if len(currencies) == 1 else None
+        kopecks = money.get("kopecks")
+        integer_kopecks = (
+            isinstance(kopecks, int) and not isinstance(kopecks, bool) and kopecks > 0
+        ) or (isinstance(kopecks, str) and kopecks.isascii() and kopecks.isdecimal())
+        if integer_kopecks and price is not None and isfinite(price) and price > 0:
+            return "RUB"
+        return None
 
     @classmethod
     def _parse_transfer_leg(cls, node: JsonObject) -> TransferLeg:

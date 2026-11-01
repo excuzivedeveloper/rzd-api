@@ -59,7 +59,7 @@ def test_cookie_ab_same_body_and_no_get_cookie_pollution(monkeypatch: pytest.Mon
         api.find_stations(query="synthetic", transport_type="rail", group_results=True)
         assert len(result.routes) == 2
         assert result.routes[0].price == 123.45
-        assert result.routes[0].currency is None  # Cookie success is not currency proof.
+        assert result.routes[0].currency == "RUB"  # OWNER-approved MMP aggregate contract.
         assert "Cookie" not in api.transport.session.headers
         assert not api.transport.session.cookies
         assert calls[0]["json"] == calls[1]["json"]
@@ -88,10 +88,12 @@ def test_cookie_ab_same_body_and_no_get_cookie_pollution(monkeypatch: pytest.Mon
         (True, None),
     ],
 )
-def test_kopecks_value_does_not_prove_currency(kopecks: Any, expected: float | None) -> None:
+def test_owner_contract_applies_only_to_positive_aggregate_kopecks(
+    kopecks: Any, expected: float | None
+) -> None:
     route = RzdApi._parse_transfer_result(payload({"kopecks": kopecks})).routes[0]
     assert route.price == expected
-    assert route.currency is None
+    assert route.currency == ("RUB" if expected is not None and expected > 0 else None)
 
 
 @pytest.mark.parametrize("currency", ["RUB", "KZT", "USD", "EUR", "UAH"])
@@ -128,3 +130,36 @@ def test_leg_price_does_not_supply_missing_aggregate():
     assert route.price is None
     assert route.currency is None
     assert route.legs[0].currency == "RUB"
+
+
+@pytest.mark.parametrize(
+    "money",
+    [
+        12345,
+        {"amount": 12345},
+        {"value": 12345},
+        {"kopecks": 123.5},
+        {"kopecks": "123.5"},
+        {"kopecks": "1e3"},
+        {"kopecks": " 123 "},
+    ],
+)
+def test_incidental_money_does_not_receive_rub(money: Any) -> None:
+    route = RzdApi._parse_transfer_result(payload(money)).routes[0]
+    assert route.currency is None
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"currency": "RUB", "currency_code": "KZT"},
+        {"currency": "", "currency_code": "RUB"},
+        {"currency": "RUB", "currency_code": None},
+        {"currency": 123},
+        {"currency": False},
+        {"currency": {}},
+    ],
+)
+def test_invalid_or_contradictory_explicit_currency_fails_closed(fields: dict[str, Any]) -> None:
+    route = RzdApi._parse_transfer_result(payload({"kopecks": 12345, **fields})).routes[0]
+    assert route.currency is None
