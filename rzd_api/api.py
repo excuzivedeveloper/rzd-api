@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from datetime import date, datetime
+from math import isfinite
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -959,10 +960,12 @@ class RzdApi:
         value = node.get(key)
         if isinstance(value, dict):
             kopecks = cls._number(value, "kopecks")
-            if kopecks is not None:
-                return kopecks / 100
-            return cls._number(value, "amount", "value")
-        return cls._number(node, key)
+            amount = kopecks / 100 if kopecks is not None else cls._number(value, "amount", "value")
+        else:
+            amount = cls._number(node, key)
+        if amount is not None and not isfinite(amount):
+            raise RzdSchemaError(f"Field {key} must contain finite money.")
+        return amount
 
     @staticmethod
     def _currency(node: JsonObject, key: str) -> str | None:

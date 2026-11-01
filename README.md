@@ -162,6 +162,18 @@ Transfer currency is populated only from an explicit provider `currency` or
 `currency_code`; when it is absent or blank, the amount may remain populated while
 currency is `None`.
 
+Transfer money must be finite: `NaN` and positive/negative infinity are schema
+errors, not fares. Zero/negative values remain amounts and do not prove a
+purchasable route. No aggregate is reconstructed from leg prices.
+
+WF193 evidence boundary: the controlled laboratory A/B reproduced MMP HTTP 500
+without `LANG_SITE` versus HTTP 200 with it. That Cookie is already scoped to
+MMP here. It does not establish the currency of `kopecks`-only amounts. Upstream
+PHP v6.1.0 describes rubles, but this unofficial-client assertion is not a
+verified current RZD currency contract. Pricing recovery remains blocked pending
+currency provenance; no implicit RUB fallback is added. See the
+[WF193 assignment](https://github.com/excuzivedeveloper/WayFound/issues/193#issuecomment-6557355804).
+
 ### Конфигурация
 
 ```python
