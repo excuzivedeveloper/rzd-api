@@ -375,7 +375,8 @@ def test_transfer_money_without_currency_preserves_amount_at_every_level() -> No
     ]
 
     assert all(model.price == 123.45 for model in money_models)
-    assert all(model.currency is None for model in money_models)
+    assert route.currency == "RUB"  # Only the OWNER-approved MMP aggregate field.
+    assert all(model.currency is None for model in money_models[1:])
 
 
 @pytest.mark.parametrize(

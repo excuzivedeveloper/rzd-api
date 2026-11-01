@@ -158,9 +158,25 @@ pricing endpoint не поддерживает маршруты с переса�
 по умолчанию ищет только железнодорожные и пригородные варианты (`b2brails`,
 `cbdpr`). Ответ сохраняет typed routes, legs, trips, nested train pricing,
 interstation transfer metadata, TTL and `incomplete` flags.
-Transfer currency is populated only from an explicit provider `currency` or
-`currency_code`; when it is absent or blank, the amount may remain populated while
-currency is `None`.
+Transfer currency normally requires an explicit provider `currency` or
+`currency_code`. The [OWNER-approved WF193 contract](https://github.com/excuzivedeveloper/WayFound/issues/193#issuecomment-6557831320)
+adds one narrow exception: MMP v2 **aggregate route `min_price.kopecks`** containing
+a finite, strictly positive integer or digit string, with neither currency key
+present, is Russian kopecks (RUB/100). Only that route receives `currency="RUB"`.
+This is an OWNER-accepted product/provider contract, not an independently verified
+first-party RZD specification. No further provider confirmation is required.
+
+Explicit currencies take precedence, including foreign or unsupported currencies;
+blank, invalid or contradictory explicit fields fail closed. There is no RUB
+inference for scalar/amount/value objects, leg/trip/product/interstation prices,
+max prices or ordinary train GET responses. No aggregate is summed from legs.
+Transfer money must be finite: NaN and positive/negative infinity are schema
+errors. Zero/negative/missing values without explicit currency remain unpublishable.
+
+WF193 laboratory A/B reproduced MMP HTTP 500 without `LANG_SITE` versus HTTP 200
+with it. The existing Cookie remains MMP-only. Offline source recovery is covered
+by synthetic tests; production runtime has **not** been deployed or validated.
+Merge, deployment and any further live call require separate authorization.
 
 ### Конфигурация
 
