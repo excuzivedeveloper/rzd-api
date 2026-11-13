@@ -261,3 +261,14 @@ RZD_LIVE_TEST=1 pytest tests/integration -m integration -v
 ## Лицензия
 
 MIT
+
+
+### Safe HTTP error metadata
+
+For non-2xx responses, `RzdHTTPError.response_category` contains only `json`, `html`,
+`text`, `other` or `unknown`, reduced from Content-Type (including `application/*+json`).
+Missing or empty Content-Type is `unknown`. The optional keyword defaults to `unknown`,
+so existing two-argument construction, status and body-preview behavior remain compatible.
+No response object or raw headers are added. This label does not identify whether a
+response originated at RZD or an intermediary; HTTP status alone does not either.
+Requests, MMP Cookie, proxy routing, TLS, timeouts and retry policy are unchanged.

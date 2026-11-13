@@ -16,6 +16,22 @@ logger = logging.getLogger(__name__)
 JsonPayload = dict[str, Any] | list[Any]
 
 
+def _response_category(content_type: object) -> str:
+    """Reduce a header to a fixed label; never retain the original value."""
+    if type(content_type) is not str:
+        return "unknown"
+    mime = content_type.split(";", 1)[0].strip().lower()
+    if not mime:
+        return "unknown"
+    if mime == "application/json" or (mime.startswith("application/") and mime.endswith("+json")):
+        return "json"
+    if mime == "text/html":
+        return "html"
+    if mime.startswith("text/"):
+        return "text"
+    return "other"
+
+
 class RzdTransport:
     """Internal HTTP transport with bounded retries and structured errors."""
 
@@ -95,7 +111,11 @@ class RzdTransport:
             )
 
         if not 200 <= response.status_code < 300:
-            raise RzdHTTPError(response.status_code, response.text[:300].strip())
+            raise RzdHTTPError(
+                response.status_code,
+                response.text[:300].strip(),
+                response_category=_response_category(response.headers.get("Content-Type")),
+            )
 
         try:
             payload: Any = response.json()

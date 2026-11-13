@@ -21,8 +21,16 @@ class RzdTransportError(RzdError):
 class RzdHTTPError(RzdTransportError):
     """Raised for a non-success HTTP response."""
 
-    def __init__(self, status_code: int, body_preview: str = "") -> None:
+    def __init__(
+        self, status_code: int, body_preview: str = "", *, response_category: str = "unknown"
+    ) -> None:
         self.status_code = status_code
+        self.response_category = (
+            response_category
+            if type(response_category) is str
+            and response_category in {"json", "html", "text", "other", "unknown"}
+            else "unknown"
+        )
         self.body_preview = body_preview
         detail = f": {body_preview}" if body_preview else ""
         super().__init__(f"RZD HTTP error {status_code}{detail}")

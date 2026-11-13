@@ -24,6 +24,7 @@ class FakeResponse:
         self.status_code = status_code
         self.text = text
         self.json_error = json_error
+        self.headers: dict[str, str] = {}
 
     def json(self) -> Any:
         if self.json_error:
@@ -179,3 +180,44 @@ def test_api_error_shapes() -> None:
         assert transport.request_json("GET", "https://example.test") == {
             "errorInfo": {"Code": code}
         }
+
+
+@pytest.mark.parametrize(
+    ("content_type", "expected"),
+    [
+        ("application/json; charset=utf-8", "json"),
+        (" APPLICATION/PROBLEM+JSON ; charset=UTF-8", "json"),
+        ("text/html; charset=utf-8", "html"),
+        ("text/plain", "text"),
+        ("application/octet-stream", "other"),
+        ("private arbitrary header", "other"),
+        ("", "unknown"),
+        ("  ;private", "unknown"),
+        (None, "unknown"),
+    ],
+)
+def test_non_success_response_keeps_only_content_type_category(
+    content_type: str | None, expected: str
+) -> None:
+    response = requests.Response()
+    response.status_code = 500
+    response._content = b"private body"
+    if content_type is not None:
+        response.headers["Content-Type"] = content_type
+    session = FakeSession(response)  # type: ignore[arg-type]
+    transport = RzdTransport(Config(), session=session)  # type: ignore[arg-type]
+    with pytest.raises(RzdHTTPError) as captured:
+        transport.request_json("POST", "https://example.test/offline")
+    error = captured.value
+    assert error.response_category == expected
+    assert error.status_code == 500
+    assert error.body_preview == "private body"  # Existing public error contract is unchanged.
+    assert not hasattr(error, "response")
+    assert not hasattr(error, "headers")
+    assert len(session.calls) == 1
+
+
+def test_http_error_category_is_optional_and_allowlisted() -> None:
+    assert RzdHTTPError(500, "legacy").response_category == "unknown"
+    assert RzdHTTPError(500, response_category="html").response_category == "html"
+    assert RzdHTTPError(500, response_category="private").response_category == "unknown"
